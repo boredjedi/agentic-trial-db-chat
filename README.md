@@ -2,16 +2,16 @@
 
 > **🤖 This repo is 100% created and maintained by an AI agent**
 
-A simple chat application that automatically uses tools when needed. Includes both CLI and web interfaces with JSON debugging.
+A complete OpenAI chat application with CLI and web interfaces, featuring automatic tool usage and conversation context.
 
 ## Features
 
-- **Automatic tool usage** - No need to specify when to use tools
-- **Built-in tools**: Time, Calculator, Weather (mock)
-- **JSON debugging** - See exactly what's happening under the hood
-- **CLI interface** - Simple command-line usage
-- **Web interface** - Clean HTML chat interface
-- **No dependencies** - Uses only Node.js built-in modules
+- **CLI Interface**: Command-line chat with OpenAI
+- **Web Interface**: Modern browser-based chat interface
+- **Tool Support**: Automatic function calling with built-in tools
+- **Conversation Memory**: Maintains context across multiple exchanges
+- **Debug Mode**: Optional detailed logging and debugging information
+- **Secure**: Environment-based API key management with .gitignore protection
 
 ## Quick Start
 

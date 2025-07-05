@@ -204,6 +204,12 @@
             <h1>🤖 OpenAI Chat Interface</h1>
             <p>Interactive chat with structured JSON debugging</p>
             <div id="apiStatus" class="status">Checking API status...</div>
+            <div style="margin-top: 10px;">
+                <label style="color: white;">
+                    <input type="checkbox" id="debugMode" style="margin-right: 5px;">
+                    Enable Debug Mode (detailed logging)
+                </label>
+            </div>
         </div>
         
         <div class="chat-container">
@@ -236,6 +242,7 @@
         const sendButton = document.getElementById('sendButton');
         const loading = document.getElementById('loading');
         const apiStatus = document.getElementById('apiStatus');
+        const debugModeCheckbox = document.getElementById('debugMode');
 
         // Conversation history
         let conversationHistory = [];
@@ -266,7 +273,10 @@
             const message = messageInput.value.trim();
             if (!message) return;
 
-            // Add user message to chat
+            // Add user message to conversation history BEFORE sending
+            conversationHistory.push({ role: 'user', content: message });
+            
+            // Add user message to chat UI
             addMessage('user', message);
             messageInput.value = '';
             
@@ -282,18 +292,22 @@
                     },
                     body: JSON.stringify({ 
                         prompt: message,
-                        messageHistory: conversationHistory 
+                        messageHistory: conversationHistory,
+                        debugMode: debugModeCheckbox.checked
                     })
                 });
                 
                 const data = await response.json();
                 
-                // Update conversation history
+                // Debug: Log the response data
+                console.log('Response data:', data);
+                
+                // Update conversation history BEFORE displaying the message
                 if (data.updated_messages) {
                     conversationHistory = data.updated_messages;
                 }
                 
-                // Add AI response
+                // Add AI response with updated conversation history
                 addMessage('ai', data.response || 'No response', data);
                 
             } catch (error) {
@@ -312,31 +326,37 @@
             
             let html = `<strong>${sender === 'user' ? '👤 You' : '🤖 Assistant'}:</strong> ${content || 'No response'}`;
             
-            // Add conversation history display instead of raw JSON
-            if (jsonData && conversationHistory.length > 0) {
+            // Show additional debug info if debug mode was enabled and we have extra data
+            if (sender === 'ai' && debugModeCheckbox.checked && jsonData) {
                 html += '<div class="json-output">';
-                html += '<strong>📋 Conversation History:</strong><br>';
-                html += JSON.stringify(conversationHistory, null, 2);
+                html += '<strong>🔍 Debug Information:</strong><br>';
+                const debugInfo = {
+                    model: jsonData.model,
+                    usage: jsonData.usage,
+                    tools_used: jsonData.tools_used,
+                    tool_outputs: jsonData.tool_outputs
+                };
+                html += JSON.stringify(debugInfo, null, 2);
                 html += '</div>';
-                
-                // Add tools section if tools were used
-                if (jsonData.tools_used && jsonData.tools_used.length > 0) {
-                    html += '<div class="tools-section">';
-                    html += '<h4>🔧 Tools Used:</h4>';
-                    jsonData.tools_used.forEach((tool, index) => {
-                        html += `<div class="tool-call">
-                            <strong>${index + 1}. ${tool.name}:</strong><br>
-                            <strong>Arguments:</strong> ${JSON.stringify(tool.arguments, null, 2)}<br>
-                            <strong>Output:</strong> ${JSON.stringify(tool.output, null, 2)}
-                        </div>`;
-                    });
-                    html += '</div>';
-                }
-                
-                // Add usage information
-                if (jsonData.usage) {
-                    html += `<div class="usage-info">📊 Usage: ${jsonData.usage.total_tokens} tokens (${jsonData.usage.prompt_tokens} prompt + ${jsonData.usage.completion_tokens} completion) | Model: ${jsonData.model}</div>`;
-                }
+            }
+            
+            // Add tools section if tools were used
+            if (jsonData && jsonData.tools_used && jsonData.tools_used.length > 0) {
+                html += '<div class="tools-section">';
+                html += '<h4>🔧 Tools Used:</h4>';
+                jsonData.tools_used.forEach((tool, index) => {
+                    html += `<div class="tool-call">
+                        <strong>${index + 1}. ${tool.name}:</strong><br>
+                        <strong>Arguments:</strong> ${JSON.stringify(tool.arguments, null, 2)}<br>
+                        <strong>Output:</strong> ${JSON.stringify(tool.output, null, 2)}
+                    </div>`;
+                });
+                html += '</div>';
+            }
+            
+            // Add usage information
+            if (jsonData && jsonData.usage) {
+                html += `<div class="usage-info">📊 Usage: ${jsonData.usage.total_tokens} tokens (${jsonData.usage.prompt_tokens} prompt + ${jsonData.usage.completion_tokens} completion) | Model: ${jsonData.model}</div>`;
             }
             
             messageDiv.innerHTML = html;

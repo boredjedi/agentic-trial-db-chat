@@ -103,7 +103,7 @@ async function getCompletion(prompt, enableTools = true, debugMode = false) {
         const messages = [
             {
                 role: 'system',
-                content: 'You are a helpful teacher. Guide the user through the solution step by step.'
+                content: 'You are a helpful teacher. Guide the user through the solution step by step. When a user asks for weather information, always use the get_weather tool with the specified location. If they mention a location in response to a weather query, call the get_weather tool with that location.'
             },
             {
                 role: 'user',
@@ -237,7 +237,7 @@ async function getCompletionWithHistory(messageHistory, enableTools = true, debu
         if (messages.length === 0 || messages[0].role !== 'system') {
             messages.unshift({
                 role: 'system',
-                content: 'You are a helpful teacher. Guide the user through the solution step by step.'
+                content: 'You are a helpful teacher. Guide the user through the solution step by step. When a user asks for weather information, always use the get_weather tool with the specified location. If they mention a location in response to a weather query, call the get_weather tool with that location.'
             });
         }
 
@@ -266,12 +266,6 @@ async function getCompletionWithHistory(messageHistory, enableTools = true, debu
         const message = response.choices[0].message;
         if (message.tool_calls && message.tool_calls.length > 0) {
             console.log(`🔧 AI wants to use ${message.tool_calls.length} tool(s)`);
-            
-            if (debugMode) {
-                console.log('📋 Tool Request Details:');
-                console.log(JSON.stringify(message.tool_calls, null, 2));
-                console.log('');
-            }
             
             // Execute each tool call
             const toolMessages = [...messages, message]; // Add assistant message with tool calls

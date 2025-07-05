@@ -59,12 +59,11 @@ async function handleRequest(req, res) {
         req.on('data', chunk => body += chunk);
         req.on('end', async () => {
             try {
-                const { prompt, messageHistory = [] } = JSON.parse(body);
+                const { prompt, messageHistory = [], debugMode = false } = JSON.parse(body);
                 
-                // Add the new user message to history
-                const updatedHistory = [...messageHistory, { role: 'user', content: prompt }];
-                
-                const result = await getCompletionWithHistory(updatedHistory);
+                // The frontend now sends the complete history including the current user message
+                // So we don't need to add it again here
+                const result = await getCompletionWithHistory(messageHistory, true, debugMode);
                 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(result));

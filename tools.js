@@ -22,6 +22,11 @@ function getCurrentTime(timezone = 'UTC') {
 }
 
 async function getWeather(location, units = 'metric') {
+    // Validate location parameter
+    if (!location || typeof location !== 'string') {
+        throw new Error('Location must be a non-empty string');
+    }
+    
     // Mock weather function - in production, you'd call a real weather API
     // For now, returning simulated data
     const weatherData = {
@@ -35,13 +40,14 @@ async function getWeather(location, units = 'metric') {
     };
     
     // Add some realistic variations based on location
-    if (location.toLowerCase().includes('london')) {
+    const locationLower = location.toLowerCase();
+    if (locationLower.includes('london')) {
         weatherData.condition = 'rainy';
         weatherData.temperature = Math.floor(Math.random() * 15) + 10;
-    } else if (location.toLowerCase().includes('dubai')) {
+    } else if (locationLower.includes('dubai')) {
         weatherData.condition = 'sunny';
         weatherData.temperature = Math.floor(Math.random() * 20) + 25;
-    } else if (location.toLowerCase().includes('new york')) {
+    } else if (locationLower.includes('new york')) {
         weatherData.temperature = Math.floor(Math.random() * 25) + 5;
     }
     
@@ -95,7 +101,15 @@ const AVAILABLE_TOOLS = [
 
 // Execute tool function
 async function executeToolFunction(toolCall) {
-    const { name, arguments: args } = toolCall.function;
+    const { name, arguments: argsString } = toolCall.function;
+    
+    // Parse the arguments JSON string
+    let args;
+    try {
+        args = JSON.parse(argsString);
+    } catch (error) {
+        throw new Error(`Invalid arguments for tool ${name}: ${error.message}`);
+    }
     
     switch (name) {
         case 'get_current_time':
@@ -105,6 +119,11 @@ async function executeToolFunction(toolCall) {
         case 'get_weather':
             const location = args.location;
             const units = args.units || 'metric';
+            
+            if (!location) {
+                throw new Error('Location parameter is required for get_weather tool');
+            }
+            
             return await getWeather(location, units);
             
         default:
