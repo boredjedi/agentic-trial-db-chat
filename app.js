@@ -96,7 +96,7 @@ async function makeOpenAIRequest(messages, tools = null) {
 }
 
 // Get completion with automatic tool usage
-async function getCompletion(prompt, enableTools = true) {
+async function getCompletion(prompt, enableTools = true, debugMode = false) {
     try {
         loadEnv();
 
@@ -117,9 +117,11 @@ async function getCompletion(prompt, enableTools = true) {
         const tools = enableTools ? AVAILABLE_TOOLS : null;
         const response = await makeOpenAIRequest(messages, tools);
         
-        console.log('🔍 Initial AI Response (before tool execution):');
-        console.log(JSON.stringify(response.choices[0].message, null, 2));
-        console.log('');
+        if (debugMode) {
+            console.log('🔍 Initial AI Response (before tool execution):');
+            console.log(JSON.stringify(response.choices[0].message, null, 2));
+            console.log('');
+        }
         
         const result = {
             response: response.choices[0].message.content,
@@ -133,9 +135,12 @@ async function getCompletion(prompt, enableTools = true) {
         const message = response.choices[0].message;
         if (message.tool_calls && message.tool_calls.length > 0) {
             console.log(`🔧 AI wants to use ${message.tool_calls.length} tool(s)`);
-            console.log('📋 Tool Request Details:');
-            console.log(JSON.stringify(message.tool_calls, null, 2));
-            console.log('');
+            
+            if (debugMode) {
+                console.log('📋 Tool Request Details:');
+                console.log(JSON.stringify(message.tool_calls, null, 2));
+                console.log('');
+            }
             
             // Execute each tool call
             const toolMessages = [...messages, message]; // Add assistant message with tool calls
@@ -143,12 +148,17 @@ async function getCompletion(prompt, enableTools = true) {
             for (const toolCall of message.tool_calls) {
                 try {
                     console.log(`🔧 Executing tool: ${toolCall.function.name}`);
-                    console.log(`📥 Tool Input: ${JSON.stringify(JSON.parse(toolCall.function.arguments), null, 2)}`);
+                    
+                    if (debugMode) {
+                        console.log(`📥 Tool Input: ${JSON.stringify(JSON.parse(toolCall.function.arguments), null, 2)}`);
+                    }
                     
                     const toolOutput = await executeToolFunction(toolCall);
                     
-                    console.log(`📤 Tool Output: ${JSON.stringify(toolOutput, null, 2)}`);
-                    console.log('');
+                    if (debugMode) {
+                        console.log(`📤 Tool Output: ${JSON.stringify(toolOutput, null, 2)}`);
+                        console.log('');
+                    }
                     
                     // Store tool usage info
                     result.tools_used.push({
@@ -181,15 +191,20 @@ async function getCompletion(prompt, enableTools = true) {
             }
             
             console.log('🤖 Getting final response with tool results...');
-            console.log('📋 Complete toolMessages array being sent to AI:');
-            console.log(JSON.stringify(toolMessages, null, 2));
-            console.log('');
+            
+            if (debugMode) {
+                console.log('📋 Complete toolMessages array being sent to AI:');
+                console.log(JSON.stringify(toolMessages, null, 2));
+                console.log('');
+            }
             
             const finalResponse = await makeOpenAIRequest(toolMessages, tools);
             
-            console.log('🎯 Final AI Response:');
-            console.log(JSON.stringify(finalResponse.choices[0].message, null, 2));
-            console.log('');
+            if (debugMode) {
+                console.log('🎯 Final AI Response:');
+                console.log(JSON.stringify(finalResponse.choices[0].message, null, 2));
+                console.log('');
+            }
             
             // Update result with final response
             result.response = finalResponse.choices[0].message.content;
@@ -222,13 +237,14 @@ async function runCLI() {
         console.log('Usage:');
         console.log('  node app.js setup           # Create .env file');
         console.log('  node app.js <prompt>        # Chat with AI');
+        console.log('  node app.js debug <prompt>  # Chat with AI (debug mode)');
         console.log('  node app.js help            # Show this help');
         console.log('');
         console.log('Examples:');
         console.log('  node app.js "Hello, how are you?"');
         console.log('  node app.js "What time is it?"');
         console.log('  node app.js "What\'s the weather in London?"');
-        console.log('  node app.js "Get time in Tokyo and weather in Dubai"');
+        console.log('  node app.js debug "Get time in Tokyo and weather in Dubai"');
         return;
     }
 
@@ -237,11 +253,14 @@ async function runCLI() {
         return;
     }
 
-    const prompt = args.join(' ');
+    // Check for debug mode
+    const debugMode = args[0] === 'debug';
+    const prompt = debugMode ? args.slice(1).join(' ') : args.join(' ');
+    
     console.log(`💬 You: ${prompt}`);
     console.log('');
 
-    const result = await getCompletion(prompt);
+    const result = await getCompletion(prompt, true, debugMode);
     
     if (result.error) {
         console.log(`❌ Error: ${result.error}`);
