@@ -159,32 +159,6 @@ async function mcpApprovalResponse(args) {
 // ADDITIONAL MCP-RELATED FUNCTIONS
 // ========================================
 
-async function webSearch(args) {
-    const { query, limit = 10, model = 'default' } = args;
-    // Mock implementation for web search model
-    return {
-        query: query,
-        model: model,
-        results: [
-            {
-                title: `Mock search result for: ${query}`,
-                url: 'https://example.com/result1',
-                snippet: 'This is a mock search result snippet...',
-                relevanceScore: 0.95
-            },
-            {
-                title: `Another result for: ${query}`,
-                url: 'https://example.com/result2',
-                snippet: 'This is another mock search result...',
-                relevanceScore: 0.87
-            }
-        ],
-        totalResults: 2,
-        searchTime: '150ms',
-        timestamp: new Date().toISOString()
-    };
-}
-
 async function udf(args) {
     const { functionName, parameters = {}, context = {} } = args;
     // Mock implementation for User Defined Functions
@@ -422,64 +396,6 @@ const MCP_TOOLS = [
     {
         type: "function",
         function: {
-            name: "web_search",
-            description: "Perform web search using MCP model",
-            parameters: {
-                type: "object",
-                properties: {
-                    query: {
-                        type: "string",
-                        description: "Search query to execute"
-                    },
-                    limit: {
-                        type: "number",
-                        description: "Maximum number of results to return",
-                        minimum: 1,
-                        maximum: 100,
-                        default: 10
-                    },
-                    model: {
-                        type: "string",
-                        description: "Search model to use",
-                        enum: ["default", "academic", "news", "images", "videos"],
-                        default: "default"
-                    },
-                    filters: {
-                        type: "object",
-                        properties: {
-                            date_range: {
-                                type: "string",
-                                enum: ["day", "week", "month", "year", "all"]
-                            },
-                            language: {
-                                type: "string",
-                                pattern: "^[a-z]{2}$"
-                            },
-                            region: {
-                                type: "string",
-                                pattern: "^[A-Z]{2}$"
-                            }
-                        }
-                    },
-                    include_snippets: {
-                        type: "boolean",
-                        description: "Whether to include content snippets",
-                        default: true
-                    }
-                },
-                required: ["query"]
-            },
-            require_approval: {
-                type: "conditional",
-                tool_names: ["external_api", "user_data_access"],
-                message: "Web search may access external services and user data"
-            },
-            allowed_tools: ["udf"]
-        }
-    },
-    {
-        type: "function",
-        function: {
             name: "udf",
             description: "Execute User Defined Function through MCP",
             parameters: {
@@ -546,7 +462,7 @@ const MCP_TOOLS = [
                 tool_names: ["system_commands", "file_operations", "database_operations"],
                 message: "User-defined functions may execute arbitrary code and require approval"
             },
-            allowed_tools: ["mcp", "mcp_approval_request", "web_search"]
+            allowed_tools: ["mcp", "mcp_approval_request"]
         }
     }
 ];
@@ -578,8 +494,6 @@ async function executeMcpTool(toolCall) {
             return await mcpApprovalRequest(args);
         case 'mcp_approval_response':
             return await mcpApprovalResponse(args);
-        case 'web_search':
-            return await webSearch(args);
         case 'udf':
             return await udf(args);
         default:
@@ -921,15 +835,13 @@ async function demonstrateAdvancedMcpFeatures() {
     console.log('5. Testing advanced parameter constraints:');
     const constraintTest = {
         function: {
-            name: 'web_search',
+            name: 'mcp_call',
             arguments: JSON.stringify({
-                query: 'test search',
-                limit: 150, // Exceeds maximum of 100
-                model: 'invalid_model', // Not in enum
-                filters: {
-                    language: 'english', // Should be 2-letter code
-                    region: 'usa' // Should be 2-letter uppercase
-                }
+                tool: 'database_operations',
+                method: 'query',
+                parameters: { query: 'SELECT * FROM users' },
+                timeout: 500, // Below minimum of 1000
+                retry_count: 10 // Above maximum of 5
             })
         }
     };
@@ -989,7 +901,6 @@ module.exports = {
     mcpCall,
     mcpApprovalRequest,
     mcpApprovalResponse,
-    webSearch,
     udf
 };
 

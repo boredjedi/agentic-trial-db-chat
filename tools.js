@@ -1,4 +1,11 @@
 // tools.js - Tool functions and definitions
+const OpenAI = require('openai');
+require('dotenv').config();
+
+// Initialize OpenAI client for web search
+const client = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+});
 
 // Tool functions
 function getCurrentTime(timezone = 'UTC') {
@@ -54,6 +61,55 @@ async function getWeather(location, units = 'metric') {
     return weatherData;
 }
 
+async function webSearch(query, options = {}) {
+    // Validate query parameter
+    if (!query || typeof query !== 'string') {
+        throw new Error('Query must be a non-empty string');
+    }
+    
+    try {
+        console.log(`🔍 Performing web search for: "${query}"`);
+        
+        const completion = await client.chat.completions.create({
+            model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4o-search-preview',
+            web_search_options: {
+                ...(options.max_results && { max_results: options.max_results }),
+                ...(options.search_depth && { search_depth: options.search_depth }),
+                ...(options.include_domains && { include_domains: options.include_domains }),
+                ...(options.exclude_domains && { exclude_domains: options.exclude_domains })
+            },
+            messages: [{
+                role: "user",
+                content: `Search for: ${query}`
+            }],
+            max_tokens: options.max_tokens || 2000
+            // Note: temperature is not compatible with search models
+        });
+        
+        const searchResult = completion.choices[0].message.content;
+        
+        return {
+            query: query,
+            model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4o-search-preview',
+            result: searchResult,
+            timestamp: new Date().toISOString(),
+            usage: completion.usage
+        };
+        
+    } catch (error) {
+        console.error('Web search error:', error.message);
+        
+        // Return a fallback response if the search model fails
+        return {
+            query: query,
+            model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4o-search-preview',
+            result: `I apologize, but I'm unable to perform web searches at the moment due to an error: ${error.message}. Please try again later or rephrase your query.`,
+            error: error.message,
+            timestamp: new Date().toISOString()
+        };
+    }
+}
+
 // Tool definitions
 const AVAILABLE_TOOLS = [
     {
@@ -96,6 +152,48 @@ const AVAILABLE_TOOLS = [
                 required: ["location"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "web_search",
+            description: "Perform a web search if any information is not available in current memory, using the specified query and options",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description: "The search query string"
+                    },
+                    max_results: {
+                        type: "integer",
+                        description: "Maximum number of search results to return",
+                        default: 10
+                    },
+                    search_depth: {
+                        type: "integer",
+                        description: "Depth of search (e.g., 1 for quick answers, 2 for more in-depth results)",
+                        default: 1
+                    },
+                    include_domains: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "List of domains to include in the search results"
+                    },
+                    exclude_domains: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "List of domains to exclude from the search results"
+                    },
+                    max_tokens: {
+                        type: "integer",
+                        description: "Maximum number of tokens in the response",
+                        default: 2000
+                    }
+                },
+                required: ["query"]
+            }
+        }
     }
 ];
 
@@ -126,6 +224,19 @@ async function executeToolFunction(toolCall) {
             
             return await getWeather(location, units);
             
+        case 'web_search':
+            const query = args.query;
+            const options = {
+                max_results: args.max_results,
+                search_depth: args.search_depth,
+                include_domains: args.include_domains,
+                exclude_domains: args.exclude_domains,
+                max_tokens: args.max_tokens,
+                temperature: args.temperature
+            };
+            
+            return await webSearch(query, options);
+            
         default:
             throw new Error(`Unknown tool: ${name}`);
     }
@@ -136,5 +247,6 @@ module.exports = {
     AVAILABLE_TOOLS,
     executeToolFunction,
     getCurrentTime,
-    getWeather
+    getWeather,
+    webSearch
 };
