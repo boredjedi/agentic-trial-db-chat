@@ -13,7 +13,7 @@ function setup() {
 OPENAI_API_KEY=your_api_key_here
 
 # Optional: Model configuration
-OPENAI_MODEL=gpt-4.1
+OPENAI_MODEL=gpt-4
 OPENAI_MAX_TOKENS=50000
 OPENAI_TEMPERATURE=0.7
 `;
@@ -64,11 +64,13 @@ function loadEnv() {
 }
 
 // Make OpenAI API request using SDK
-async function makeOpenAIRequest(messages, tools = null) {
+async function makeOpenAIRequest(messages, tools = null, fileIds = []) {
     const apiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_MODEL || 'gpt-4';
-    const maxTokens = parseInt(process.env.OPENAI_MAX_TOKENS) || 2000;
-    const temperature = parseFloat(process.env.OPENAI_TEMPERATURE) || 0.7;
+    
+    // Validate and parse numeric environment variables
+    const maxTokens = Math.max(1, Math.min(100000, parseInt(process.env.OPENAI_MAX_TOKENS) || 2000));
+    const temperature = Math.max(0, Math.min(2, parseFloat(process.env.OPENAI_TEMPERATURE) || 0.7));
 
     // Initialize OpenAI client
     const openai = new OpenAI({
@@ -87,6 +89,16 @@ async function makeOpenAIRequest(messages, tools = null) {
         requestOptions.tool_choice = 'auto';
     }
 
+    // Add file attachments if provided
+    if (fileIds && fileIds.length > 0) {
+        requestOptions.file_ids = fileIds;
+    }
+    
+    // Add vector store if available (for knowledge base)
+    if (process.env.VECTOR_STORE_ID) {
+        requestOptions.vector_store_id = process.env.VECTOR_STORE_ID;
+    }
+
     try {
         const completion = await openai.chat.completions.create(requestOptions);
         return completion;
@@ -103,7 +115,7 @@ async function getCompletion(prompt, enableTools = true, debugMode = false) {
         const messages = [
             {
                 role: 'system',
-                content: 'You are a helpful teacher. Guide the user through the solution step by step. When a user asks for weather information, always use the get_weather tool with the specified location. If they mention a location in response to a weather query, call the get_weather tool with that location.'
+                content: 'You are a helpful teacher. Guide the user through the solution step by step. When a user asks for weather information, always use the get_weather tool with the specified location. If they mention a location in response to a weather query, call the get_weather tool with that location. When users ask questions that might be answered by content in uploaded knowledge base files, use the file_search tool to find relevant information before responding. Always prioritize searching the knowledge base when the question relates to specific documents or files that have been uploaded.'
             },
             {
                 role: 'user',
@@ -228,7 +240,7 @@ async function getCompletion(prompt, enableTools = true, debugMode = false) {
 }
 
 // Get completion with conversation history for web interface
-async function getCompletionWithHistory(messageHistory, enableTools = true, debugMode = false) {
+async function getCompletionWithHistory(messageHistory, enableTools = true, debugMode = false, fileIds = []) {
     try {
         loadEnv();
 
@@ -237,7 +249,7 @@ async function getCompletionWithHistory(messageHistory, enableTools = true, debu
         if (messages.length === 0 || messages[0].role !== 'system') {
             messages.unshift({
                 role: 'system',
-                content: 'You are a helpful teacher. Guide the user through the solution step by step. When a user asks for weather information, always use the get_weather tool with the specified location. If they mention a location in response to a weather query, call the get_weather tool with that location.'
+                content: 'You are a helpful teacher. Guide the user through the solution step by step. When a user asks for weather information, always use the get_weather tool with the specified location. If they mention a location in response to a weather query, call the get_weather tool with that location. When users ask questions that might be answered by content in uploaded knowledge base files, use the file_search tool to find relevant information before responding. Always prioritize searching the knowledge base when the question relates to specific documents or files that have been uploaded.'
             });
         }
 
@@ -245,7 +257,7 @@ async function getCompletionWithHistory(messageHistory, enableTools = true, debu
         
         // Include tools if enabled
         const tools = enableTools ? AVAILABLE_TOOLS : null;
-        const response = await makeOpenAIRequest(messages, tools);
+        const response = await makeOpenAIRequest(messages, tools, fileIds);
         
         if (debugMode) {
             console.log('🔍 Initial AI Response (before tool execution):');
@@ -388,6 +400,14 @@ async function runCLI() {
     // Check for debug mode
     const debugMode = args[0] === 'debug';
     const prompt = debugMode ? args.slice(1).join(' ') : args.join(' ');
+    
+    // Validate prompt
+    if (!prompt || prompt.trim() === '') {
+        console.log('❌ Error: Please provide a prompt');
+        console.log('   Usage: node app.js "Your prompt here"');
+        console.log('   Example: node app.js "Hello, how are you?"');
+        return;
+    }
     
     console.log(`💬 You: ${prompt}`);
     console.log('');

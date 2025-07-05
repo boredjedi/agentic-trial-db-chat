@@ -3,6 +3,18 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const { getCompletion, getCompletionWithHistory, setup } = require('./app.js');
+const OpenAI = require('openai');
+const axios = require('axios');
+const Busboy = require('busboy');
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+});
+
+// Global vector store management
+let vectorStoreId = null;
+let processingFiles = new Set();
 
 const PORT = 3000;
 
@@ -19,6 +31,141 @@ const mimeTypes = {
     '.svg': 'image/svg+xml'
 };
 
+// Create or get vector store
+async function getOrCreateVectorStore() {
+    if (vectorStoreId) {
+        return vectorStoreId;
+    }
+    
+    try {
+        const vectorStore = await openai.vectorStores.create({
+            name: "knowledge_base"
+        });
+        vectorStoreId = vectorStore.id;
+        
+        // Store in environment for app.js to use
+        process.env.VECTOR_STORE_ID = vectorStoreId;
+        
+        console.log(`✅ Created vector store: ${vectorStoreId}`);
+        return vectorStoreId;
+    } catch (error) {
+        console.error('❌ Failed to create vector store:', error.message);
+        throw error;
+    }
+}
+
+// Add file to vector store
+async function addFileToVectorStore(fileId, filename) {
+    try {
+        const vectorStartTime = Date.now();
+        const storeId = await getOrCreateVectorStore();
+        
+    
+        
+        console.log('⏳ Adding file to vector store...');
+        const addStartTime = Date.now();
+        
+        // Add file to vector store using direct API call
+
+        
+        const addFileResponse = await axios.post(`https://api.openai.com/v1/vector_stores/${storeId}/files`, {
+            file_id: fileId
+        }, {
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                'Content-Type': 'application/json',
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        });
+        
+
+        
+        const addTime = Date.now() - addStartTime;
+        console.log(`✅ Added file ${filename} to vector store in ${addTime}ms`);
+        
+        // Wait for file to be processed
+        console.log('⏳ Waiting for file processing...');
+        const processStartTime = Date.now();
+        
+        // Use the file ID from the vector store response, not the original file ID
+        const vectorStoreFileId = addFileResponse.data.id;
+
+        await waitForFileProcessing(storeId, vectorStoreFileId);
+        const processTime = Date.now() - processStartTime;
+        
+        const totalVectorTime = Date.now() - vectorStartTime;
+        console.log(`✅ Vector store processing completed in ${processTime}ms (total: ${totalVectorTime}ms)`);
+        
+        return true;
+    } catch (error) {
+        console.error(`❌ Failed to add file to vector store:`, error.message);
+        if (error.response) {
+            console.error(`🔍 Error response status: ${error.response.status}`);
+            console.error(`🔍 Error response data:`, JSON.stringify(error.response.data, null, 2));
+        }
+        throw error;
+    }
+}
+
+// Wait for file to be processed
+async function waitForFileProcessing(storeId, fileId, maxAttempts = 60) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            
+            
+            // Use direct API call instead of SDK
+            const result = await axios.get(`https://api.openai.com/v1/vector_stores/${storeId}/files`, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                }
+            });
+            
+
+            
+            // The API returns files with 'id' field, not 'file_id'
+            const file = result.data.data.find(f => f.id === fileId);
+
+            
+            if (file && file.status === 'completed') {
+                console.log(`✅ File processing completed on attempt ${attempt}`);
+                return true;
+            } else if (file && file.status === 'failed') {
+                const errorMessage = file.last_error?.message || file.last_error?.code || 'Unknown error';
+                console.log(`❌ File processing failed with error:`, JSON.stringify(file.last_error, null, 2));
+                throw new Error(`File processing failed: ${errorMessage}`);
+            } else if (file && file.status === 'in_progress') {
+                // File is still processing, continue waiting
+                const elapsed = attempt * 2; // 2 seconds per attempt
+                console.log(`⏳ File processing... attempt ${attempt}/${maxAttempts} (${elapsed}s elapsed)`);
+            } else {
+                // File not found or unknown status
+                console.log(`⚠️ File not found or unknown status:`, file ? file.status : 'not found');
+                const elapsed = attempt * 2; // 2 seconds per attempt
+                console.log(`⏳ File processing... attempt ${attempt}/${maxAttempts} (${elapsed}s elapsed)`);
+            }
+            
+            // Increase wait time for large files
+            const waitTime = Math.min(2000 + (attempt * 500), 10000); // 2-10 seconds
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            
+        } catch (error) {
+            console.error(`❌ Error checking file status:`, error.message);
+            if (attempt === maxAttempts) throw error;
+        }
+    }
+    
+    throw new Error('File processing timeout');
+}
+
+// Format file size for display
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 // Check if API is configured
 function checkApiStatus() {
     try {
@@ -34,6 +181,182 @@ function checkApiStatus() {
         return !!apiKeyLine;
     } catch {
         return false;
+    }
+}
+
+// Handle chat using OpenAI Assistants v2 API (new thread per session)
+async function handleChatWithAssistants(prompt, messageHistory, debugMode, fileIds, threadId) {
+    try {
+        console.log('🤖 Using OpenAI Assistants v2 API for chat with tools support');
+        
+        // Create or get assistant
+        let assistantId = process.env.ASSISTANT_ID;
+        if (!assistantId) {
+            console.log('📝 Creating new assistant...');
+            const assistant = await openai.beta.assistants.create({
+                name: "Knowledge Base Assistant",
+                instructions: `You are a helpful assistant with access to uploaded knowledge base files. 
+                You can search through these files to find relevant information and answer questions accurately.
+                When asked about topics covered in the uploaded files, use the file search tool to find relevant information.
+                Always provide accurate, helpful responses based on the available knowledge.`,
+                model: "gpt-4o-mini",
+                tools: [
+                    {
+                        type: "retrieval"
+                    }
+                ]
+            });
+            assistantId = assistant.id;
+            process.env.ASSISTANT_ID = assistantId;
+            console.log(`✅ Created assistant: ${assistantId}`);
+        }
+        
+        // Create new thread if not provided (new session)
+        let thread;
+        if (!threadId) {
+            console.log('🧵 Creating new thread for this session...');
+            thread = await openai.beta.threads.create();
+            console.log(`✅ Created thread: ${thread.id}`);
+        } else {
+            console.log(`🧵 Using existing thread: ${threadId}`);
+            thread = { id: threadId };
+        }
+        
+        // Add user message to thread
+        console.log('💬 Adding user message to thread...');
+        await openai.beta.threads.messages.create(thread.id, {
+            role: "user",
+            content: prompt
+        });
+        
+        // Create run with file IDs if available
+        console.log('🏃 Creating run...');
+        const runParams = {
+            assistant_id: assistantId
+        };
+        
+        // Add file IDs to the run if available
+        if (fileIds && fileIds.length > 0) {
+            console.log(`📁 Adding ${fileIds.length} files to run:`, fileIds);
+            runParams.file_ids = fileIds;
+        }
+        
+        const run = await openai.beta.threads.runs.create(thread.id, runParams);
+        console.log(`✅ Created run: ${run.id}`);
+        
+        // Wait for run to complete
+        console.log('⏳ Waiting for run to complete...');
+        let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+        
+        while (runStatus.status === 'queued' || runStatus.status === 'in_progress') {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+            console.log(`⏳ Run status: ${runStatus.status}`);
+        }
+        
+        if (runStatus.status === 'failed') {
+            throw new Error(`Run failed: ${runStatus.last_error?.message || 'Unknown error'}`);
+        }
+        
+        if (runStatus.status === 'requires_action') {
+            console.log('🔧 Run requires action, handling tool calls...');
+            // Handle tool calls if needed
+            await handleToolCalls(thread.id, run.id, runStatus);
+            // Wait for completion after tool calls
+            runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+            while (runStatus.status === 'queued' || runStatus.status === 'in_progress') {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+            }
+        }
+        
+        // Get the assistant's response
+        console.log('📥 Getting assistant response...');
+        const messages = await openai.beta.threads.messages.list(thread.id);
+        const assistantMessage = messages.data.find(msg => msg.role === 'assistant');
+        
+        if (!assistantMessage) {
+            throw new Error('No assistant response found');
+        }
+        
+        const response = assistantMessage.content[0]?.text?.value || 'No response content';
+        
+        // Prepare result
+        const result = {
+            response: response,
+            threadId: thread.id,
+            model: 'gpt-4o-mini',
+            usage: {
+                total_tokens: 0, // Assistants API doesn't provide token usage in the same way
+                prompt_tokens: 0,
+                completion_tokens: 0
+            }
+        };
+        
+        if (debugMode) {
+            result.debug = {
+                assistantId: assistantId,
+                runId: run.id,
+                runStatus: runStatus.status,
+                fileIds: fileIds || []
+            };
+        }
+        
+        console.log('✅ Chat completed successfully');
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Chat error:', error.message);
+        throw error;
+    }
+}
+
+// Handle tool calls from assistant
+async function handleToolCalls(threadId, runId, runStatus) {
+    console.log('🔧 Processing tool calls...');
+    
+    if (runStatus.required_action?.type === 'submit_tool_outputs') {
+        const toolCalls = runStatus.required_action.submit_tool_outputs.tool_calls;
+        const toolOutputs = [];
+        
+        for (const toolCall of toolCalls) {
+            console.log(`🔧 Processing tool call: ${toolCall.function?.name}`);
+            
+            if (toolCall.function?.name === 'file_search') {
+                // Handle file search tool call
+                const args = JSON.parse(toolCall.function.arguments);
+                const searchQuery = args.query;
+                
+                console.log(`🔍 File search query: ${searchQuery}`);
+                
+                // Use the file search functionality from tools.js
+                try {
+                    const { searchFiles } = require('./tools.js');
+                    const searchResults = await searchFiles(searchQuery);
+                    
+                    toolOutputs.push({
+                        tool_call_id: toolCall.id,
+                        output: JSON.stringify(searchResults)
+                    });
+                    
+                    console.log(`✅ File search completed with ${searchResults.length} results`);
+                } catch (error) {
+                    console.error('❌ File search failed:', error.message);
+                    toolOutputs.push({
+                        tool_call_id: toolCall.id,
+                        output: JSON.stringify({ error: error.message })
+                    });
+                }
+            }
+        }
+        
+        // Submit tool outputs
+        if (toolOutputs.length > 0) {
+            console.log('📤 Submitting tool outputs...');
+            await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
+                tool_outputs: toolOutputs
+            });
+        }
     }
 }
 
@@ -55,15 +378,33 @@ async function handleRequest(req, res) {
 
     // API endpoints
     if (pathname === '/api/chat' && req.method === 'POST') {
+        // Validate Content-Type
+        const contentType = req.headers['content-type'];
+        if (!contentType || !contentType.includes('application/json')) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Content-Type must be application/json' }));
+            return;
+        }
+        
         let body = '';
-        req.on('data', chunk => body += chunk);
+        let bodySize = 0;
+        const maxBodySize = 1024 * 1024; // 1MB limit
+        
+        req.on('data', chunk => {
+            bodySize += chunk.length;
+            if (bodySize > maxBodySize) {
+                res.writeHead(413, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Request body too large' }));
+                return;
+            }
+            body += chunk;
+        });
         req.on('end', async () => {
             try {
-                const { prompt, messageHistory = [], debugMode = false } = JSON.parse(body);
+                const { prompt, messageHistory = [], debugMode = false, fileIds = [], threadId = null } = JSON.parse(body);
                 
-                // The frontend now sends the complete history including the current user message
-                // So we don't need to add it again here
-                const result = await getCompletionWithHistory(messageHistory, true, debugMode);
+                // Use OpenAI Assistants v2 API for tool support (file search, etc.)
+                const result = await handleChatWithAssistants(prompt, messageHistory, debugMode, fileIds, threadId);
                 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(result));
@@ -79,6 +420,176 @@ async function handleRequest(req, res) {
         const isConfigured = checkApiStatus();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ api_configured: isConfigured }));
+        return;
+    }
+
+    if (pathname === '/api/processing-status' && req.method === 'GET') {
+        const parsedUrl = url.parse(req.url, true);
+        const fileId = parsedUrl.query.fileId;
+        
+        if (!fileId) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'fileId parameter required' }));
+            return;
+        }
+        
+        const isProcessing = processingFiles.has(fileId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+            processing: isProcessing,
+            fileId: fileId
+        }));
+        return;
+    }
+
+    if (pathname === '/api/upload' && req.method === 'POST') {
+        // Handle file upload using busboy
+        try {
+            const startTime = Date.now();
+            console.log('📁 Processing file upload...');
+            console.log('Content-Type:', req.headers['content-type']);
+
+            const busboy = Busboy({ headers: req.headers, limits: { fileSize: 50 * 1024 * 1024 } });
+            let fileBuffer = Buffer.alloc(0);
+            let fileInfo = null;
+            let fileReceived = false;
+
+            busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+                fileInfo = { filename, mimetype };
+                console.log('File part found:', { filename, encoding, mimeType: mimetype });
+                
+                // Collect file data chunks
+                const chunks = [];
+                file.on('data', (data) => {
+                    chunks.push(data);
+                });
+                file.on('end', () => {
+                    // Combine all chunks into the file buffer
+                    fileBuffer = Buffer.concat(chunks);
+                    fileReceived = true;
+                });
+            });
+
+            busboy.on('finish', async () => {
+                try {
+                    if (!fileReceived || !fileInfo) {
+                        throw new Error('No file found in request');
+                    }
+                    
+                    // Extract the actual filename string from the object if needed
+                    let realFilename = 'uploaded-file';
+                    if (typeof fileInfo.filename === 'string') {
+                        realFilename = fileInfo.filename;
+                    } else if (fileInfo.filename && typeof fileInfo.filename.filename === 'string') {
+                        realFilename = fileInfo.filename.filename;
+                    }
+                    
+                    console.log('File part found:', fileInfo.filename);
+                    console.log('File content type:', fileInfo.mimetype);
+                    console.log('File size:', formatFileSize(fileBuffer.length));
+
+                    // Create file for OpenAI
+                    console.log('⏳ Uploading to OpenAI API...');
+                    const openaiStartTime = Date.now();
+
+                    // Use axios with AbortController for reliable timeout handling
+                    const uploadTimeout = Math.max(30000, fileBuffer.length / 50); // 30s minimum, 1ms per 50 bytes
+                    console.log(`⏱️ Upload timeout set to ${uploadTimeout}ms for ${formatFileSize(fileBuffer.length)} file`);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), uploadTimeout);
+
+                    let result;
+                    try {
+                        // Create FormData for the file
+                        const FormData = require('form-data');
+                        const form = new FormData();
+
+                        // Create a readable stream from the buffer and append to form
+                        const { Readable } = require('stream');
+                        const stream = new Readable();
+                        stream.push(fileBuffer);
+                        stream.push(null); // End the stream
+                        
+                        form.append('file', stream, {
+                            filename: realFilename,
+                            contentType: fileInfo.mimetype || 'application/octet-stream'
+                        });
+                        form.append('purpose', 'assistants');
+                        // Make direct API call with axios
+                        const response = await axios.post('https://api.openai.com/v1/files', form, {
+                            headers: {
+                                ...form.getHeaders(),
+                                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                            },
+                            timeout: uploadTimeout,
+                            signal: controller.signal,
+                            maxContentLength: Infinity,
+                            maxBodyLength: Infinity
+                        });
+                        result = response.data;
+                        clearTimeout(timeoutId);
+                    } catch (uploadError) {
+                        clearTimeout(timeoutId);
+                        if (uploadError.code === 'ECONNABORTED' || uploadError.name === 'AbortError') {
+                            console.error(`❌ Upload timeout after ${uploadTimeout}ms`);
+                            throw new Error(`Upload timeout after ${uploadTimeout}ms`);
+                        } else {
+                            console.error(`❌ Upload failed:`, uploadError.message);
+                            throw new Error(`Upload failed: ${uploadError.message}`);
+                        }
+                    }
+                    const openaiTime = Date.now() - openaiStartTime;
+                    console.log(`✅ OpenAI upload completed in ${openaiTime}ms`);
+                    // Add file to processing set
+                    processingFiles.add(result.id);
+                    // Process file in background
+                    console.log('⏳ Starting vector store processing in background...');
+                    addFileToVectorStore(result.id, realFilename)
+                        .then(() => {
+                            processingFiles.delete(result.id);
+                            const totalTime = Date.now() - startTime;
+                            console.log(`✅ File ${realFilename} fully processed in ${totalTime}ms total`);
+                        })
+                        .catch((error) => {
+                            processingFiles.delete(result.id);
+                            console.error(`❌ Failed to process file ${realFilename}:`, error.message);
+                        });
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ 
+                        success: true, 
+                        fileId: result.id,
+                        filename: realFilename,
+                        processing: true
+                    }));
+                } catch (error) {
+                    console.error('File upload error:', error);
+                    console.error('Error stack:', error.stack);
+                    if (!res.headersSent) {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ 
+                            success: false, 
+                            error: error.message,
+                            details: error.stack
+                        }));
+                    }
+                }
+            });
+            busboy.on('error', (err) => {
+                console.error('❌ Busboy error:', err);
+                if (!res.headersSent) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: 'Busboy error: ' + err.message }));
+                }
+            });
+            req.pipe(busboy);
+        } catch (error) {
+            console.error('File upload error:', error);
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: error.message }));
+            }
+        }
         return;
     }
 
@@ -99,7 +610,15 @@ async function handleRequest(req, res) {
 
     // Static file serving
     let filePath = pathname === '/' ? '/chat.html' : pathname;
-    filePath = path.join(__dirname, filePath);
+    
+    // Special route for test upload page
+    if (pathname === '/test-upload') {
+        filePath = path.join(__dirname, '/test-upload.html');
+    } else if (pathname === '/simple-test') {
+        filePath = path.join(__dirname, '/test-simple-upload.html');
+    } else {
+        filePath = path.join(__dirname, filePath);
+    }
 
     // Security check - prevent directory traversal
     if (!filePath.startsWith(__dirname)) {
@@ -116,6 +635,13 @@ async function handleRequest(req, res) {
             
             res.writeHead(200, { 'Content-Type': mimeType });
             const fileStream = fs.createReadStream(filePath);
+            fileStream.on('error', (error) => {
+                console.error('File stream error:', error.message);
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Internal Server Error');
+                }
+            });
             fileStream.pipe(res);
             return;
         }
@@ -134,6 +660,12 @@ const server = http.createServer(handleRequest);
 server.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
     console.log(`Chat interface: http://localhost:${PORT}/chat.html`);
+    console.log(`Test upload page: http://localhost:${PORT}/test-upload`);
+    console.log(`Simple upload test: http://localhost:${PORT}/simple-test`);
+    console.log(`Vector store test: node test-vector-store.js`);
+    console.log(`File search test: node test-file-search.js`);
+    console.log(`Complete workflow test: node test-complete-workflow.js`);
+    console.log(`Upload timing test: node test-upload-timing.js`);
     console.log('');
     
     if (checkApiStatus()) {
