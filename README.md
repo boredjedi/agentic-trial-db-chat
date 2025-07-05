@@ -84,7 +84,9 @@ The web interface provides:
 - `app.js` - Main application logic (CLI + core functions)
 - `server.js` - Web server for HTML interface
 - `chat.html` - Web chat interface
+- `tools.js` - Tool definitions and handlers
 - `.env` - API key configuration (created by setup)
+- `tests/` - All test files (see tests/README.md for details)
 
 ## Built-in Tools
 
@@ -94,11 +96,39 @@ The application automatically decides when to use these tools:
 2. **calculate** - When user needs mathematical calculations
 3. **weather_info** - When user asks about weather (returns mock data)
 
-## API Key Setup
+## Configuration
+
+### API Key Setup
 
 1. Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 2. Run `node app.js setup` to create .env file
 3. Edit .env file: `OPENAI_API_KEY=your_actual_key_here`
+
+### Environment Variables
+
+Configure the application by setting these environment variables in your `.env` file:
+
+```bash
+# Required
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional - Model Configuration
+OPENAI_MODEL=gpt-4o-mini                    # Default: gpt-4o-mini
+OPENAI_SEARCH_MODEL=gpt-4o-search-preview   # For web search functionality
+
+# Optional - Server Configuration  
+PORT=3000                                   # Default: 3000
+
+# Automatically managed (don't set manually)
+VECTOR_STORE_ID=vs_xxx                      # Set automatically by the system
+ASSISTANT_ID=asst_xxx                       # Set automatically by the system
+```
+
+**Available Models:**
+- `gpt-4o` - Most capable model
+- `gpt-4o-mini` - Fast and efficient (default)
+- `gpt-4-turbo` - Previous generation
+- `gpt-3.5-turbo` - Legacy model
 
 ## No Configuration Needed
 

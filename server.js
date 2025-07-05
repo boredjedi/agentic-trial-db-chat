@@ -38,6 +38,30 @@ async function getOrCreateVectorStore() {
     }
     
     try {
+        // First, try to find existing vector stores
+        console.log('🔍 Looking for existing vector stores...');
+        const vectorStores = await openai.vectorStores.list();
+        
+        // Log all vector stores found
+        console.log(`📋 Found ${vectorStores.data.length} vector stores:`);
+        vectorStores.data.forEach((store, index) => {
+            console.log(`  ${index + 1}. ID: ${store.id}, Name: "${store.name || 'unnamed'}", Files: ${store.file_counts?.total || 0}`);
+        });
+        
+        // Look for a vector store named "knowledge_base"
+        const existingStore = vectorStores.data.find(store => store.name === "knowledge_base");
+        
+        if (existingStore) {
+            vectorStoreId = existingStore.id;
+            process.env.VECTOR_STORE_ID = vectorStoreId;
+            console.log(`✅ Found existing vector store: ${vectorStoreId}`);
+            console.log(`🔍 Dashboard vector store ID: vs_6869887239708191885dbfef63ab231c`);
+            console.log(`🔍 Match status: ${vectorStoreId === 'vs_6869887239708191885dbfef63ab231c' ? '✅ MATCH' : '❌ NO MATCH'}`);
+            return vectorStoreId;
+        }
+        
+        // If no existing store found, create a new one
+        console.log('📝 Creating new vector store...');
         const vectorStore = await openai.vectorStores.create({
             name: "knowledge_base"
         });
@@ -49,7 +73,7 @@ async function getOrCreateVectorStore() {
         console.log(`✅ Created vector store: ${vectorStoreId}`);
         return vectorStoreId;
     } catch (error) {
-        console.error('❌ Failed to create vector store:', error.message);
+        console.error('❌ Failed to get or create vector store:', error.message);
         throw error;
     }
 }
@@ -193,22 +217,45 @@ async function handleChatWithAssistants(prompt, messageHistory, debugMode, fileI
         let assistantId = process.env.ASSISTANT_ID;
         if (!assistantId) {
             console.log('📝 Creating new assistant...');
+            
+            // Get or create vector store first
+            const vectorStoreId = await getOrCreateVectorStore();
+            
+            // Import available tools from tools.js
+            const { AVAILABLE_TOOLS } = require('./tools.js');
+            
             const assistant = await openai.beta.assistants.create({
                 name: "Knowledge Base Assistant",
-                instructions: `You are a helpful assistant with access to uploaded knowledge base files. 
-                You can search through these files to find relevant information and answer questions accurately.
-                When asked about topics covered in the uploaded files, use the file search tool to find relevant information.
-                Always provide accurate, helpful responses based on the available knowledge.`,
-                model: "gpt-4o-mini",
+                instructions: `You are a helpful assistant with access to multiple tools and uploaded knowledge base files. 
+                
+                Available tools:
+                1. file_search - Search through uploaded knowledge base files for specific information
+                2. web_search - Search the internet for current information when needed
+                3. get_weather - Get current weather information for any location
+                4. get_current_time - Get current time in any timezone
+                
+                When answering questions:
+                - First try file_search if the question might be answered by uploaded files
+                - If no relevant information is found in files, use web_search for current information
+                - Use appropriate tools based on the user's needs
+                - Always provide accurate, helpful responses using the best available information`,
+                model: process.env.OPENAI_MODEL || "gpt-4o-mini",
                 tools: [
                     {
-                        type: "retrieval"
+                        type: "file_search"
+                    },
+                    ...AVAILABLE_TOOLS
+                ],
+                tool_resources: {
+                    file_search: {
+                        vector_store_ids: [vectorStoreId]
                     }
-                ]
+                }
             });
             assistantId = assistant.id;
             process.env.ASSISTANT_ID = assistantId;
             console.log(`✅ Created assistant: ${assistantId}`);
+            console.log(`📁 Attached vector store: ${vectorStoreId}`);
         }
         
         // Create new thread if not provided (new session)
@@ -285,7 +332,7 @@ async function handleChatWithAssistants(prompt, messageHistory, debugMode, fileI
         const result = {
             response: response,
             threadId: thread.id,
-            model: 'gpt-4o-mini',
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
             usage: {
                 total_tokens: 0, // Assistants API doesn't provide token usage in the same way
                 prompt_tokens: 0,
@@ -320,33 +367,35 @@ async function handleToolCalls(threadId, runId, runStatus) {
         const toolOutputs = [];
         
         for (const toolCall of toolCalls) {
-            console.log(`🔧 Processing tool call: ${toolCall.function?.name}`);
+            console.log(`🔧 Processing tool call: ${toolCall.function?.name || toolCall.type}`);
             
-            if (toolCall.function?.name === 'file_search') {
-                // Handle file search tool call
-                const args = JSON.parse(toolCall.function.arguments);
-                const searchQuery = args.query;
+            try {
+                let result;
                 
-                console.log(`🔍 File search query: ${searchQuery}`);
-                
-                // Use the file search functionality from tools.js
-                try {
-                    const { searchFiles } = require('./tools.js');
-                    const searchResults = await searchFiles(searchQuery);
+                if (toolCall.function?.name) {
+                    // Handle custom function tools
+                    const { executeToolFunction } = require('./tools.js');
+                    console.log(`🛠️ Executing function: ${toolCall.function.name}`);
+                    console.log(`📋 Arguments: ${toolCall.function.arguments}`);
+                    
+                    result = await executeToolFunction(toolCall);
                     
                     toolOutputs.push({
                         tool_call_id: toolCall.id,
-                        output: JSON.stringify(searchResults)
+                        output: JSON.stringify(result)
                     });
                     
-                    console.log(`✅ File search completed with ${searchResults.length} results`);
-                } catch (error) {
-                    console.error('❌ File search failed:', error.message);
-                    toolOutputs.push({
-                        tool_call_id: toolCall.id,
-                        output: JSON.stringify({ error: error.message })
-                    });
+                    console.log(`✅ Function ${toolCall.function.name} completed successfully`);
+                } else {
+                    // Handle built-in tools (like file_search) - these are handled automatically by OpenAI
+                    console.log(`ℹ️ Built-in tool call: ${toolCall.type}`);
                 }
+            } catch (error) {
+                console.error(`❌ Tool call failed: ${error.message}`);
+                toolOutputs.push({
+                    tool_call_id: toolCall.id,
+                    output: JSON.stringify({ error: error.message })
+                });
             }
         }
         

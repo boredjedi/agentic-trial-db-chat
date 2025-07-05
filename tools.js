@@ -7,6 +7,35 @@ const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 });
 
+// Helper function to get or find vector store
+async function getVectorStoreId() {
+    // Check if already in environment
+    let vectorStoreId = process.env.VECTOR_STORE_ID;
+    
+    if (!vectorStoreId) {
+        console.log('🔍 Looking for existing vector stores...');
+        const vectorStores = await client.vectorStores.list();
+        
+        // Log all vector stores found
+        console.log(`📋 Found ${vectorStores.data.length} vector stores:`);
+        vectorStores.data.forEach((store, index) => {
+            console.log(`  ${index + 1}. ID: ${store.id}, Name: "${store.name || 'unnamed'}", Files: ${store.file_counts?.total || 0}`);
+        });
+        
+        const knowledgeBase = vectorStores.data.find(store => store.name === "knowledge_base");
+        
+        if (knowledgeBase) {
+            vectorStoreId = knowledgeBase.id;
+            process.env.VECTOR_STORE_ID = vectorStoreId;
+            console.log(`✅ Found vector store: ${vectorStoreId}`);
+            console.log(`🔍 Dashboard vector store ID: vs_6869887239708191885dbfef63ab231c`);
+            console.log(`🔍 Match status: ${vectorStoreId === 'vs_6869887239708191885dbfef63ab231c' ? '✅ MATCH' : '❌ NO MATCH'}`);
+        }
+    }
+    
+    return vectorStoreId;
+}
+
 // Tool functions
 function getCurrentTime(timezone = 'UTC') {
     const now = new Date();
@@ -70,15 +99,15 @@ async function fileSearch(query, options = {}) {
     try {
         console.log(`📁 Searching knowledge base files for: "${query}"`);
         
-        // Check if vector store ID is available
-        const vectorStoreId = process.env.VECTOR_STORE_ID;
+        // Get vector store ID dynamically
+        const vectorStoreId = await getVectorStoreId();
         if (!vectorStoreId) {
             throw new Error('No vector store available. Please upload some files first.');
         }
         
         // Use OpenAI responses API for file search
         const response = await client.responses.create({
-            model: "gpt-4o-mini",
+            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
             input: query,
             tools: [{
                 type: "file_search",
@@ -89,7 +118,7 @@ async function fileSearch(query, options = {}) {
         
         return {
             query: query,
-            model: "gpt-4o-mini",
+            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
             result: response.choices[0].message.content,
             vector_store_id: vectorStoreId,
             timestamp: new Date().toISOString(),
@@ -102,7 +131,7 @@ async function fileSearch(query, options = {}) {
         // Return a fallback response if the search fails
         return {
             query: query,
-            model: "gpt-4o-mini",
+            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
             result: `I apologize, but I'm unable to search the knowledge base files at the moment due to an error: ${error.message}. Please try again later or rephrase your query.`,
             error: error.message,
             timestamp: new Date().toISOString()
@@ -337,5 +366,6 @@ module.exports = {
     getCurrentTime,
     getWeather,
     fileSearch,
-    webSearch
+    webSearch,
+    getVectorStoreId
 };
