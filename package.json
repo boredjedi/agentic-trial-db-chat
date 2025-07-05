@@ -1,0 +1,14 @@
+{
+  "name": "openai-chat-app",
+  "version": "1.0.0",
+  "description": "Simple OpenAI chat application with automatic tool usage",
+  "main": "app.js",
+  "scripts": {
+    "start": "node server.js",
+    "setup": "node app.js setup",
+    "chat": "node app.js"
+  },
+  "keywords": ["openai", "chat", "tools", "cli"],
+  "author": "AI Agent",
+  "license": "MIT"
+}
