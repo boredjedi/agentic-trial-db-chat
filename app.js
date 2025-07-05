@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
+const { AVAILABLE_TOOLS, executeToolFunction } = require('./tools');
 
 // Configuration
 const ENV_FILE = path.join(process.cwd(), '.env');
@@ -101,6 +102,10 @@ async function getCompletion(prompt, enableTools = true) {
 
         const messages = [
             {
+                role: 'system',
+                content: 'You are a helpful teacher. Guide the user through the solution step by step.'
+            },
+            {
                 role: 'user',
                 content: prompt
             }
@@ -111,6 +116,10 @@ async function getCompletion(prompt, enableTools = true) {
         // Include tools if enabled
         const tools = enableTools ? AVAILABLE_TOOLS : null;
         const response = await makeOpenAIRequest(messages, tools);
+        
+        console.log('🔍 Initial AI Response (before tool execution):');
+        console.log(JSON.stringify(response.choices[0].message, null, 2));
+        console.log('');
         
         const result = {
             response: response.choices[0].message.content,
@@ -124,13 +133,22 @@ async function getCompletion(prompt, enableTools = true) {
         const message = response.choices[0].message;
         if (message.tool_calls && message.tool_calls.length > 0) {
             console.log(`🔧 AI wants to use ${message.tool_calls.length} tool(s)`);
+            console.log('📋 Tool Request Details:');
+            console.log(JSON.stringify(message.tool_calls, null, 2));
+            console.log('');
             
             // Execute each tool call
             const toolMessages = [...messages, message]; // Add assistant message with tool calls
             
             for (const toolCall of message.tool_calls) {
                 try {
+                    console.log(`🔧 Executing tool: ${toolCall.function.name}`);
+                    console.log(`📥 Tool Input: ${JSON.stringify(JSON.parse(toolCall.function.arguments), null, 2)}`);
+                    
                     const toolOutput = await executeToolFunction(toolCall);
+                    
+                    console.log(`📤 Tool Output: ${JSON.stringify(toolOutput, null, 2)}`);
+                    console.log('');
                     
                     // Store tool usage info
                     result.tools_used.push({
@@ -162,9 +180,16 @@ async function getCompletion(prompt, enableTools = true) {
                 }
             }
             
-            // Get final response with tool results
             console.log('🤖 Getting final response with tool results...');
+            console.log('📋 Complete toolMessages array being sent to AI:');
+            console.log(JSON.stringify(toolMessages, null, 2));
+            console.log('');
+            
             const finalResponse = await makeOpenAIRequest(toolMessages, tools);
+            
+            console.log('🎯 Final AI Response:');
+            console.log(JSON.stringify(finalResponse.choices[0].message, null, 2));
+            console.log('');
             
             // Update result with final response
             result.response = finalResponse.choices[0].message.content;
@@ -187,64 +212,6 @@ async function getCompletion(prompt, enableTools = true) {
     }
 }
 
-// Tool functions
-function getCurrentTime(timezone = 'UTC') {
-    const now = new Date();
-    const options = {
-        timeZone: timezone,
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        timeZoneName: 'short'
-    };
-    
-    return {
-        current_time: now.toLocaleString('en-US', options),
-        timestamp: now.toISOString(),
-        timezone: timezone
-    };
-}
-
-// Tool definitions
-const AVAILABLE_TOOLS = [
-    {
-        type: "function",
-        function: {
-            name: "get_current_time",
-            description: "Get the current time in a specified timezone",
-            parameters: {
-                type: "object",
-                properties: {
-                    timezone: {
-                        type: "string",
-                        description: "The timezone to get the time for (e.g., 'UTC', 'America/New_York', 'Europe/London')",
-                        default: "UTC"
-                    }
-                },
-                required: []
-            }
-        }
-    }
-];
-
-// Execute tool function
-async function executeToolFunction(toolCall) {
-    const { name, arguments: args } = toolCall.function;
-    
-    console.log(`🔧 Executing tool: ${name} with args:`, args);
-    
-    switch (name) {
-        case 'get_current_time':
-            const timezone = args.timezone || 'UTC';
-            return getCurrentTime(timezone);
-        default:
-            throw new Error(`Unknown tool: ${name}`);
-    }
-}
-
 // CLI interface
 async function runCLI() {
     const args = process.argv.slice(2);
@@ -259,7 +226,9 @@ async function runCLI() {
         console.log('');
         console.log('Examples:');
         console.log('  node app.js "Hello, how are you?"');
-        console.log('  node app.js "What is the weather like?"');
+        console.log('  node app.js "What time is it?"');
+        console.log('  node app.js "What\'s the weather in London?"');
+        console.log('  node app.js "Get time in Tokyo and weather in Dubai"');
         return;
     }
 
