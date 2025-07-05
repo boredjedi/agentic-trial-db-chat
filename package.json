@@ -8,7 +8,15 @@
     "setup": "node app.js setup",
     "chat": "node app.js"
   },
-  "keywords": ["openai", "chat", "tools", "cli"],
+  "keywords": [
+    "openai",
+    "chat",
+    "tools",
+    "cli"
+  ],
   "author": "AI Agent",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "openai": "^4.104.0"
+  }
 }

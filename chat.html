@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI Chat Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+        }
+        
+        .status {
+            background: #f8fafc;
+            padding: 15px;
+            border-left: 4px solid #10b981;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        
+        .user-message {
+            background: #e0e7ff;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .ai-message {
+            background: white;
+            border: 1px solid #e5e7eb;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .json-output {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        
+        .tools-section {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        
+        .tools-section h4 {
+            color: #92400e;
+            margin-bottom: 8px;
+        }
+        
+        .tool-call {
+            background: #fffbeb;
+            border: 1px solid #fbbf24;
+            border-radius: 5px;
+            padding: 8px;
+            margin: 5px 0;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        
+        .usage-info {
+            background: #e0f2fe;
+            border: 1px solid #0891b2;
+            border-radius: 5px;
+            padding: 8px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #0e7490;
+        }
+        
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .input-container {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        
+        .input-field {
+            flex: 1;
+            min-height: 50px;
+            max-height: 120px;
+            padding: 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        .input-field:focus {
+            border-color: #4f46e5;
+        }
+        
+        .send-button {
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.2s;
+            min-width: 80px;
+        }
+        
+        .send-button:hover {
+            transform: translateY(-1px);
+        }
+        
+        .send-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #6b7280;
+        }
+        
+        .error {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #dc2626;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 OpenAI Chat Interface</h1>
+            <p>Interactive chat with structured JSON debugging</p>
+            <div id="apiStatus" class="status">Checking API status...</div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message ai-message">
+                    <strong>🤖 Assistant:</strong> Hello! I'm ready to help. Send me a message and I'll respond with both the answer and structured JSON output for debugging.
+                </div>
+            </div>
+            
+            <div class="loading" id="loading">
+                <p>🤖 Thinking... Please wait</p>
+            </div>
+            
+            <div class="input-area">
+                <div class="input-container">
+                    <textarea 
+                        id="messageInput" 
+                        class="input-field" 
+                        placeholder="Type your message here... (Shift+Enter for new line, Enter to send)"
+                        rows="2"></textarea>
+                    <button id="sendButton" class="send-button">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const loading = document.getElementById('loading');
+        const apiStatus = document.getElementById('apiStatus');
+
+        // Check API status on load
+        async function checkApiStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                if (data.api_configured) {
+                    apiStatus.innerHTML = '✅ OpenAI API configured and ready';
+                    apiStatus.style.borderColor = '#10b981';
+                } else {
+                    apiStatus.innerHTML = '⚠️ OpenAI API not configured - some features may not work';
+                    apiStatus.style.borderColor = '#f59e0b';
+                    apiStatus.style.background = '#fef3c7';
+                }
+            } catch (error) {
+                apiStatus.innerHTML = '❌ Could not check API status';
+                apiStatus.style.borderColor = '#ef4444';
+                apiStatus.style.background = '#fef2f2';
+            }
+        }
+
+        // Send message
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // Add user message to chat
+            addMessage('user', message);
+            messageInput.value = '';
+            
+            // Show loading
+            loading.style.display = 'block';
+            sendButton.disabled = true;
+            
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ prompt: message })
+                });
+                
+                const data = await response.json();
+                
+                // Add AI response
+                addMessage('ai', data.response || 'No response', data);
+                
+            } catch (error) {
+                addMessage('ai', `Error: ${error.message}`, { error: error.message });
+            } finally {
+                loading.style.display = 'none';
+                sendButton.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        // Add message to chat
+        function addMessage(sender, content, jsonData = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            
+            let html = `<strong>${sender === 'user' ? '👤 You' : '🤖 Assistant'}:</strong> ${content || 'No response'}`;
+            
+            // Add JSON debugging output
+            if (jsonData) {
+                html += `<div class="json-output">${JSON.stringify(jsonData, null, 2)}</div>`;
+                
+                // Add tools section if tools were used
+                if (jsonData.tools_used && jsonData.tools_used.length > 0) {
+                    html += '<div class="tools-section">';
+                    html += '<h4>🔧 Tools Used:</h4>';
+                    jsonData.tools_used.forEach(tool => {
+                        html += `<div class="tool-call"><strong>${tool.name}:</strong> ${JSON.stringify(tool.arguments, null, 2)}</div>`;
+                    });
+                    html += '</div>';
+                }
+                
+                // Add usage information
+                if (jsonData.usage) {
+                    html += `<div class="usage-info">📊 Usage: ${jsonData.usage.total_tokens} tokens (${jsonData.usage.prompt_tokens} prompt + ${jsonData.usage.completion_tokens} completion) | Model: ${jsonData.model}</div>`;
+                }
+            }
+            
+            messageDiv.innerHTML = html;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Event listeners
+        sendButton.addEventListener('click', sendMessage);
+        
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Initialize
+        checkApiStatus();
+        messageInput.focus();
+    </script>
+</body>
+</html>

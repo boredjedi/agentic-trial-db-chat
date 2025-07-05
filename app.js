@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
+const OpenAI = require('openai');
 
 // Configuration
 const ENV_FILE = path.join(process.cwd(), '.env');
@@ -62,14 +62,19 @@ function loadEnv() {
     }
 }
 
-// Make OpenAI API request
+// Make OpenAI API request using SDK
 async function makeOpenAIRequest(messages, tools = null) {
     const apiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_MODEL || 'gpt-4';
     const maxTokens = parseInt(process.env.OPENAI_MAX_TOKENS) || 2000;
     const temperature = parseFloat(process.env.OPENAI_TEMPERATURE) || 0.7;
 
-    const requestBody = {
+    // Initialize OpenAI client
+    const openai = new OpenAI({
+        apiKey: apiKey
+    });
+
+    const requestOptions = {
         model,
         messages,
         max_tokens: maxTokens,
@@ -77,53 +82,16 @@ async function makeOpenAIRequest(messages, tools = null) {
     };
 
     if (tools && tools.length > 0) {
-        requestBody.tools = tools;
-        requestBody.tool_choice = 'auto';
+        requestOptions.tools = tools;
+        requestOptions.tool_choice = 'auto';
     }
 
-    const postData = JSON.stringify(requestBody);
-    
-    const options = {
-        hostname: 'api.openai.com',
-        port: 443,
-        path: '/v1/chat/completions',
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(postData)
-        }
-    };
-
-    return new Promise((resolve, reject) => {
-        const req = https.request(options, (res) => {
-            let responseData = '';
-            
-            res.on('data', (chunk) => {
-                responseData += chunk;
-            });
-            
-            res.on('end', () => {
-                try {
-                    const jsonData = JSON.parse(responseData);
-                    if (res.statusCode !== 200) {
-                        reject(new Error(`OpenAI API error: ${jsonData.error?.message || res.statusMessage}`));
-                    } else {
-                        resolve(jsonData);
-                    }
-                } catch (error) {
-                    reject(new Error(`Failed to parse response: ${error.message}`));
-                }
-            });
-        });
-        
-        req.on('error', (error) => {
-            reject(new Error(`Request failed: ${error.message}`));
-        });
-        
-        req.write(postData);
-        req.end();
-    });
+    try {
+        const completion = await openai.chat.completions.create(requestOptions);
+        return completion;
+    } catch (error) {
+        throw new Error(`OpenAI API error: ${error.message}`);
+    }
 }
 
 // Get completion with automatic tool usage
