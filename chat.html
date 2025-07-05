@@ -196,6 +196,105 @@
             border-radius: 5px;
             margin: 10px 0;
         }
+        
+        /* Markdown-specific styles */
+        .ai-message h1, .ai-message h2, .ai-message h3, .ai-message h4, .ai-message h5, .ai-message h6 {
+            margin: 15px 0 10px 0;
+            color: #1f2937;
+            font-weight: 600;
+        }
+        
+        .ai-message h1 { font-size: 1.5em; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px; }
+        .ai-message h2 { font-size: 1.3em; }
+        .ai-message h3 { font-size: 1.2em; }
+        .ai-message h4 { font-size: 1.1em; }
+        
+        .ai-message p {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+        
+        .ai-message ul, .ai-message ol {
+            margin: 10px 0;
+            padding-left: 25px;
+        }
+        
+        .ai-message li {
+            margin: 5px 0;
+            line-height: 1.5;
+        }
+        
+        .ai-message code {
+            background: #f3f4f6;
+            color: #dc2626;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+        }
+        
+        .ai-message pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+        }
+        
+        .ai-message pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+        
+        .ai-message blockquote {
+            border-left: 4px solid #3b82f6;
+            background: #f8fafc;
+            margin: 15px 0;
+            padding: 10px 15px;
+            font-style: italic;
+        }
+        
+        .ai-message strong {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .ai-message em {
+            font-style: italic;
+        }
+        
+        .ai-message a {
+            color: #3b82f6;
+            text-decoration: underline;
+        }
+        
+        .ai-message a:hover {
+            color: #1d4ed8;
+        }
+        
+        .ai-message table {
+            border-collapse: collapse;
+            margin: 15px 0;
+            width: 100%;
+        }
+        
+        .ai-message table, .ai-message th, .ai-message td {
+            border: 1px solid #e5e7eb;
+        }
+        
+        .ai-message th, .ai-message td {
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .ai-message th {
+            background: #f3f4f6;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -236,6 +335,9 @@
         </div>
     </div>
 
+    <!-- Markdown parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    
     <script>
         const messagesContainer = document.getElementById('messages');
         const messageInput = document.getElementById('messageInput');
@@ -324,7 +426,17 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}-message`;
             
-            let html = `<strong>${sender === 'user' ? '👤 You' : '🤖 Assistant'}:</strong> ${content || 'No response'}`;
+            // Render content with markdown for AI responses
+            let contentHtml;
+            if (sender === 'ai' && content) {
+                // Parse markdown for AI responses
+                contentHtml = marked.parse(content);
+            } else {
+                // Plain text for user messages
+                contentHtml = content || 'No response';
+            }
+            
+            let html = `<strong>${sender === 'user' ? '👤 You' : '🤖 Assistant'}:</strong> ${contentHtml}`;
             
             // Show additional debug info if debug mode was enabled and we have extra data
             if (sender === 'ai' && debugModeCheckbox.checked && jsonData) {

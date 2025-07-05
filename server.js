@@ -82,6 +82,21 @@ async function handleRequest(req, res) {
         return;
     }
 
+    // Serve marked library from node_modules
+    if (pathname === '/lib/marked.min.js') {
+        try {
+            const markedPath = path.join(__dirname, 'node_modules', 'marked', 'marked.min.js');
+            if (fs.existsSync(markedPath)) {
+                res.writeHead(200, { 'Content-Type': 'text/javascript' });
+                const fileStream = fs.createReadStream(markedPath);
+                fileStream.pipe(res);
+                return;
+            }
+        } catch (error) {
+            // Fallback to CDN if local file not found
+        }
+    }
+
     // Static file serving
     let filePath = pathname === '/' ? '/chat.html' : pathname;
     filePath = path.join(__dirname, filePath);
