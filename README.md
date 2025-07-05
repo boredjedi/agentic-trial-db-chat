@@ -15,21 +15,12 @@ A simple chat application that automatically uses tools when needed. Includes bo
 
 ## Quick Start
 
-1. **Setup API key:**
+1. **Setup and configure API key:**
    ```bash
    node app.js setup
-   # Edit .env file with your OpenAI API key
-   ```
-
-2. **CLI Usage:**
-   ```bash
+   # This creates .env file - edit it with your OpenAI API key, then start using:
    node app.js "What time is it?"
-   node app.js "Calculate 15 * 23 + 47"
-   node app.js "What's the weather in Paris?"
-   ```
-
-3. **Web Interface:**
-   ```bash
+   # OR start web interface:
    node server.js
    # Open http://localhost:3000 in your browser
    ```
