@@ -237,6 +237,9 @@
         const loading = document.getElementById('loading');
         const apiStatus = document.getElementById('apiStatus');
 
+        // Conversation history
+        let conversationHistory = [];
+
         // Check API status on load
         async function checkApiStatus() {
             try {
@@ -277,10 +280,18 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ prompt: message })
+                    body: JSON.stringify({ 
+                        prompt: message,
+                        messageHistory: conversationHistory 
+                    })
                 });
                 
                 const data = await response.json();
+                
+                // Update conversation history
+                if (data.updated_messages) {
+                    conversationHistory = data.updated_messages;
+                }
                 
                 // Add AI response
                 addMessage('ai', data.response || 'No response', data);
@@ -301,9 +312,12 @@
             
             let html = `<strong>${sender === 'user' ? '👤 You' : '🤖 Assistant'}:</strong> ${content || 'No response'}`;
             
-            // Add JSON debugging output
-            if (jsonData) {
-                html += `<div class="json-output">${JSON.stringify(jsonData, null, 2)}</div>`;
+            // Add conversation history display instead of raw JSON
+            if (jsonData && conversationHistory.length > 0) {
+                html += '<div class="json-output">';
+                html += '<strong>📋 Conversation History:</strong><br>';
+                html += JSON.stringify(conversationHistory, null, 2);
+                html += '</div>';
                 
                 // Add tools section if tools were used
                 if (jsonData.tools_used && jsonData.tools_used.length > 0) {

@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
-const { getCompletion, setup } = require('./app.js');
+const { getCompletion, getCompletionWithHistory, setup } = require('./app.js');
 
 const PORT = 3000;
 
@@ -59,8 +59,12 @@ async function handleRequest(req, res) {
         req.on('data', chunk => body += chunk);
         req.on('end', async () => {
             try {
-                const { prompt } = JSON.parse(body);
-                const result = await getCompletion(prompt);
+                const { prompt, messageHistory = [] } = JSON.parse(body);
+                
+                // Add the new user message to history
+                const updatedHistory = [...messageHistory, { role: 'user', content: prompt }];
+                
+                const result = await getCompletionWithHistory(updatedHistory);
                 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(result));

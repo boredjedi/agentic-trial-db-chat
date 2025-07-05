@@ -227,6 +227,144 @@ async function getCompletion(prompt, enableTools = true, debugMode = false) {
     }
 }
 
+// Get completion with conversation history for web interface
+async function getCompletionWithHistory(messageHistory, enableTools = true, debugMode = false) {
+    try {
+        loadEnv();
+
+        // Add system message if not present
+        const messages = [...messageHistory];
+        if (messages.length === 0 || messages[0].role !== 'system') {
+            messages.unshift({
+                role: 'system',
+                content: 'You are a helpful teacher. Guide the user through the solution step by step.'
+            });
+        }
+
+        console.log('🤖 Sending request to OpenAI with conversation history...');
+        
+        // Include tools if enabled
+        const tools = enableTools ? AVAILABLE_TOOLS : null;
+        const response = await makeOpenAIRequest(messages, tools);
+        
+        if (debugMode) {
+            console.log('🔍 Initial AI Response (before tool execution):');
+            console.log(JSON.stringify(response.choices[0].message, null, 2));
+            console.log('');
+        }
+        
+        const result = {
+            response: response.choices[0].message.content,
+            usage: response.usage,
+            model: response.model,
+            tools_used: [],
+            tool_outputs: [],
+            updated_messages: [...messages] // Include the conversation history
+        };
+
+        // Handle tool calls if present
+        const message = response.choices[0].message;
+        if (message.tool_calls && message.tool_calls.length > 0) {
+            console.log(`🔧 AI wants to use ${message.tool_calls.length} tool(s)`);
+            
+            if (debugMode) {
+                console.log('📋 Tool Request Details:');
+                console.log(JSON.stringify(message.tool_calls, null, 2));
+                console.log('');
+            }
+            
+            // Execute each tool call
+            const toolMessages = [...messages, message]; // Add assistant message with tool calls
+            
+            for (const toolCall of message.tool_calls) {
+                try {
+                    console.log(`🔧 Executing tool: ${toolCall.function.name}`);
+                    
+                    if (debugMode) {
+                        console.log(`📥 Tool Input: ${JSON.stringify(JSON.parse(toolCall.function.arguments), null, 2)}`);
+                    }
+                    
+                    const toolOutput = await executeToolFunction(toolCall);
+                    
+                    if (debugMode) {
+                        console.log(`📤 Tool Output: ${JSON.stringify(toolOutput, null, 2)}`);
+                        console.log('');
+                    }
+                    
+                    // Store tool usage info
+                    result.tools_used.push({
+                        name: toolCall.function.name,
+                        arguments: JSON.parse(toolCall.function.arguments),
+                        output: toolOutput
+                    });
+                    
+                    result.tool_outputs.push(toolOutput);
+                    
+                    // Add tool result to conversation
+                    toolMessages.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify(toolOutput)
+                    });
+                    
+                    console.log(`✅ Tool ${toolCall.function.name} executed successfully`);
+                    
+                } catch (error) {
+                    console.error(`❌ Tool execution failed:`, error.message);
+                    
+                    // Add error to conversation
+                    toolMessages.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: `Error: ${error.message}`
+                    });
+                }
+            }
+            
+            console.log('🤖 Getting final response with tool results...');
+            
+            if (debugMode) {
+                console.log('📋 Complete toolMessages array being sent to AI:');
+                console.log(JSON.stringify(toolMessages, null, 2));
+                console.log('');
+            }
+            
+            const finalResponse = await makeOpenAIRequest(toolMessages, tools);
+            
+            if (debugMode) {
+                console.log('🎯 Final AI Response:');
+                console.log(JSON.stringify(finalResponse.choices[0].message, null, 2));
+                console.log('');
+            }
+            
+            // Update result with final response
+            result.response = finalResponse.choices[0].message.content;
+            result.usage.total_tokens += finalResponse.usage.total_tokens;
+            result.usage.prompt_tokens += finalResponse.usage.prompt_tokens;
+            result.usage.completion_tokens += finalResponse.usage.completion_tokens;
+            
+            // Update conversation history with final assistant message
+            result.updated_messages = [...toolMessages, finalResponse.choices[0].message];
+        } else {
+            // No tools used, just add the assistant response to history
+            result.updated_messages = [...messages, response.choices[0].message];
+        }
+
+        return result;
+
+    } catch (error) {
+        return {
+            error: error.message,
+            response: null,
+            usage: null,
+            model: null,
+            tools_used: [],
+            tool_outputs: [],
+            updated_messages: messageHistory // Return original history on error
+        };
+    }
+}
+
 // CLI interface
 async function runCLI() {
     const args = process.argv.slice(2);
@@ -291,6 +429,7 @@ async function runCLI() {
 // Export functions for server use
 module.exports = {
     getCompletion,
+    getCompletionWithHistory,
     setup,
     loadEnv
 };
