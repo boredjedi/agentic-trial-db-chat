@@ -12,8 +12,8 @@ function setup() {
 OPENAI_API_KEY=your_api_key_here
 
 # Optional: Model configuration
-OPENAI_MODEL=gpt-4
-OPENAI_MAX_TOKENS=2000
+OPENAI_MODEL=gpt-4.1
+OPENAI_MAX_TOKENS=50000
 OPENAI_TEMPERATURE=0.7
 `;
 
@@ -95,7 +95,7 @@ async function makeOpenAIRequest(messages, tools = null) {
 }
 
 // Get completion with automatic tool usage
-async function getCompletion(prompt, tools = null) {
+async function getCompletion(prompt, enableTools = true) {
     try {
         loadEnv();
 
@@ -108,21 +108,69 @@ async function getCompletion(prompt, tools = null) {
 
         console.log('🤖 Sending request to OpenAI...');
         
+        // Include tools if enabled
+        const tools = enableTools ? AVAILABLE_TOOLS : null;
         const response = await makeOpenAIRequest(messages, tools);
+        
         const result = {
             response: response.choices[0].message.content,
             usage: response.usage,
             model: response.model,
-            tools_used: []
+            tools_used: [],
+            tool_outputs: []
         };
 
         // Handle tool calls if present
         const message = response.choices[0].message;
         if (message.tool_calls && message.tool_calls.length > 0) {
-            result.tools_used = message.tool_calls.map(call => ({
-                name: call.function.name,
-                arguments: JSON.parse(call.function.arguments)
-            }));
+            console.log(`🔧 AI wants to use ${message.tool_calls.length} tool(s)`);
+            
+            // Execute each tool call
+            const toolMessages = [...messages, message]; // Add assistant message with tool calls
+            
+            for (const toolCall of message.tool_calls) {
+                try {
+                    const toolOutput = await executeToolFunction(toolCall);
+                    
+                    // Store tool usage info
+                    result.tools_used.push({
+                        name: toolCall.function.name,
+                        arguments: JSON.parse(toolCall.function.arguments),
+                        output: toolOutput
+                    });
+                    
+                    result.tool_outputs.push(toolOutput);
+                    
+                    // Add tool result to conversation
+                    toolMessages.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify(toolOutput)
+                    });
+                    
+                    console.log(`✅ Tool ${toolCall.function.name} executed successfully`);
+                    
+                } catch (error) {
+                    console.error(`❌ Tool execution failed:`, error.message);
+                    
+                    // Add error to conversation
+                    toolMessages.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: `Error: ${error.message}`
+                    });
+                }
+            }
+            
+            // Get final response with tool results
+            console.log('🤖 Getting final response with tool results...');
+            const finalResponse = await makeOpenAIRequest(toolMessages, tools);
+            
+            // Update result with final response
+            result.response = finalResponse.choices[0].message.content;
+            result.usage.total_tokens += finalResponse.usage.total_tokens;
+            result.usage.prompt_tokens += finalResponse.usage.prompt_tokens;
+            result.usage.completion_tokens += finalResponse.usage.completion_tokens;
         }
 
         return result;
@@ -133,8 +181,67 @@ async function getCompletion(prompt, tools = null) {
             response: null,
             usage: null,
             model: null,
-            tools_used: []
+            tools_used: [],
+            tool_outputs: []
         };
+    }
+}
+
+// Tool functions
+function getCurrentTime(timezone = 'UTC') {
+    const now = new Date();
+    const options = {
+        timeZone: timezone,
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'short'
+    };
+    
+    return {
+        current_time: now.toLocaleString('en-US', options),
+        timestamp: now.toISOString(),
+        timezone: timezone
+    };
+}
+
+// Tool definitions
+const AVAILABLE_TOOLS = [
+    {
+        type: "function",
+        function: {
+            name: "get_current_time",
+            description: "Get the current time in a specified timezone",
+            parameters: {
+                type: "object",
+                properties: {
+                    timezone: {
+                        type: "string",
+                        description: "The timezone to get the time for (e.g., 'UTC', 'America/New_York', 'Europe/London')",
+                        default: "UTC"
+                    }
+                },
+                required: []
+            }
+        }
+    }
+];
+
+// Execute tool function
+async function executeToolFunction(toolCall) {
+    const { name, arguments: args } = toolCall.function;
+    
+    console.log(`🔧 Executing tool: ${name} with args:`, args);
+    
+    switch (name) {
+        case 'get_current_time':
+            const timezone = args.timezone || 'UTC';
+            return getCurrentTime(timezone);
+        default:
+            throw new Error(`Unknown tool: ${name}`);
     }
 }
 
@@ -179,8 +286,10 @@ async function runCLI() {
         
         if (result.tools_used && result.tools_used.length > 0) {
             console.log('🔧 Tools used:');
-            result.tools_used.forEach(tool => {
-                console.log(`   - ${tool.name}: ${JSON.stringify(tool.arguments)}`);
+            result.tools_used.forEach((tool, index) => {
+                console.log(`   ${index + 1}. ${tool.name}:`);
+                console.log(`      Arguments: ${JSON.stringify(tool.arguments)}`);
+                console.log(`      Output: ${JSON.stringify(tool.output, null, 2)}`);
             });
             console.log('');
         }

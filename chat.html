@@ -309,8 +309,12 @@
                 if (jsonData.tools_used && jsonData.tools_used.length > 0) {
                     html += '<div class="tools-section">';
                     html += '<h4>🔧 Tools Used:</h4>';
-                    jsonData.tools_used.forEach(tool => {
-                        html += `<div class="tool-call"><strong>${tool.name}:</strong> ${JSON.stringify(tool.arguments, null, 2)}</div>`;
+                    jsonData.tools_used.forEach((tool, index) => {
+                        html += `<div class="tool-call">
+                            <strong>${index + 1}. ${tool.name}:</strong><br>
+                            <strong>Arguments:</strong> ${JSON.stringify(tool.arguments, null, 2)}<br>
+                            <strong>Output:</strong> ${JSON.stringify(tool.output, null, 2)}
+                        </div>`;
                     });
                     html += '</div>';
                 }
