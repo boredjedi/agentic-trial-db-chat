@@ -1,93 +1,155 @@
 # Agentic Trial DB Chat
 
-> **🤖 This repository was created by an AI agent as a fork and extension of the original instructions-trial-openai-tools project**
+> **🤖 Advanced Multi-Agent Chat System with Noodle-Based Prompt Engineering**
 
-This repository is a fork and enhancement of [instructions-trial-openai-tools](https://github.com/boredjedi/instructions-trial-openai-tools) by [@boredjedi](https://github.com/boredjedi), created by an AI agent to explore and extend the capabilities of the original project.
+This repository is a fork and enhancement of [instructions-trial-openai-tools](https://github.com/boredjedi/instructions-trial-openai-tools) by [@boredjedi](https://github.com/boredjedi), transformed into a sophisticated multi-agent chat system with intelligent prompt engineering.
 
 ## 🚀 What's New in This Fork
 
-This repository builds upon the excellent foundation of the original project with the following enhancements and modifications:
+This repository has been completely overhauled with a revolutionary multi-agent architecture:
 
-### Enhanced Features
-- **Database Integration**: Extended to work with database systems for persistent storage
-- **Agentic Capabilities**: Enhanced with more sophisticated AI agent patterns
-- **Improved Tool Management**: Better organization and extensibility of tools
-- **Advanced Testing**: Comprehensive test suite for database operations
+### 🧠 Noodle-Based Prompt Engineering System
+- **Intelligent Context Analysis**: Noodle (main agent) analyzes full conversation history
+- **Smart Agent Routing**: Automatically determines the best agent for each question
+- **Context-Aware Prompts**: Engineers comprehensive prompts with full conversation context
+- **Pronoun Resolution**: Handles follow-ups like "when was he born?" by understanding context
+- **Incomplete Question Handling**: Routes unclear questions back to Noodle for clarification
 
-### Technical Improvements
-- **Modular Architecture**: Better separation of concerns
-- **Enhanced Error Handling**: More robust error management
-- **Performance Optimizations**: Improved response times and efficiency
-- **Extended Documentation**: More detailed usage examples and guides
+### 🤖 Multi-Agent Architecture
+- **Noodle Agent**: Main conversational agent with clarification capabilities
+- **History Tutor Agent**: Specialized for historical questions and facts
+- **Web Search Agent**: Real-time internet search using OpenAI's search model
+- **Organized Tools**: Each agent has dedicated tools in separate files
 
-## 📋 Original Project Features
+### 🔧 Technical Improvements
+- **Modular Tool Organization**: `tools/history-tools.js`, `tools/web-tools.js`, `tools/noodle-tools.js`
+- **Clean Logging System**: Readable console output for easy debugging
+- **API Compatibility**: Fixed web search integration with proper OpenAI API usage
+- **Enhanced Error Handling**: Robust fallbacks and error management
 
-This fork includes all the original features from [instructions-trial-openai-tools](https://github.com/boredjedi/instructions-trial-openai-tools):
+## 📋 System Features
 
-- **CLI Interface**: Command-line chat with OpenAI
-- **Web Interface**: Modern browser-based chat interface  
-- **Tool Support**: Automatic function calling with built-in tools
-- **Conversation Memory**: Maintains context across multiple exchanges
-- **Debug Mode**: Optional detailed logging and debugging information
+This enhanced system includes all original features plus advanced multi-agent capabilities:
+
+- **Web Interface**: Modern browser-based chat interface at `http://localhost:3000`
+- **Multi-Agent System**: Intelligent routing between specialized agents
+- **Context Preservation**: Full conversation history maintained across agents
+- **Real-Time Web Search**: Live internet search using OpenAI's search model
+- **Historical Knowledge**: Specialized history agent for historical questions
+- **Smart Clarification**: Handles incomplete questions intelligently
 - **Secure**: Environment-based API key management with .gitignore protection
 
 ## 🛠️ Quick Start
 
 1. **Clone this repository:**
    ```bash
-   git clone https://github.com/yourusername/agentic-trial-db-chat.git
+   git clone https://github.com/boredjedi/agentic-trial-db-chat.git
    cd agentic-trial-db-chat
    ```
 
 2. **Setup and configure API key:**
    ```bash
-   node app.js setup
-   # This creates .env file - edit it with your OpenAI API key, then start using:
-   node app.js "What time is it?"
-   # OR start web interface:
+   # Create .env file with your OpenAI API key
+   echo "OPENAI_API_KEY=your_openai_api_key_here" > .env
+   
+   # Start the web interface:
    node server.js
    # Open http://localhost:3000 in your browser
    ```
 
-## 🔧 Enhanced Configuration
+3. **Test the system:**
+   ```bash
+   # Run the comprehensive test suite
+   node tests/test-noodle-prompt-engineering.js
+   ```
 
-### Database Configuration
-Add these to your `.env` file for database functionality:
+## 🔧 Configuration
 
-```bash
-# Database Configuration (New in this fork)
-DATABASE_URL=your_database_connection_string
-DATABASE_TYPE=postgresql  # or mysql, sqlite
-```
-
-### Original Configuration
+### Required Configuration
 ```bash
 # Required
 OPENAI_API_KEY=your_openai_api_key_here
+```
 
-# Optional - Model Configuration
-OPENAI_MODEL=gpt-4o-mini                    # Default: gpt-4o-mini
-OPENAI_SEARCH_MODEL=gpt-4o-search-preview   # For web search functionality
+### Optional Configuration
+```bash
+# Model Configuration
+OPENAI_MODEL=gpt-4o                        # Default: gpt-4o
+OPENAI_SEARCH_MODEL=gpt-4o-search-preview  # For web search functionality
 
-# Optional - Server Configuration  
-PORT=3000                                   # Default: 3000
+# Server Configuration  
+PORT=3000                                  # Default: 3000
 ```
 
 ## 📁 Project Structure
 
 ```
 agentic-trial-db-chat/
-├── app.js              # Main application logic (CLI + core functions)
-├── server.js           # Web server for HTML interface
-├── chat.html           # Web chat interface
-├── tools.js            # Tool definitions and handlers
-├── tools-mcp.js        # MCP (Model Context Protocol) tools
-├── tests/              # Comprehensive test suite
-│   ├── README.md       # Test documentation
-│   ├── test-*.js       # Various test files
-│   └── sample-*.txt    # Test data files
-├── .env                # Configuration file (created by setup)
-└── README.md           # This file
+├── agents/                    # Multi-agent system
+│   ├── noodle-agent.js       # Main conversational agent
+│   ├── history-tutor-agent.js # Historical knowledge agent
+│   └── web-search-agent.js   # Web search agent
+├── tools/                     # Organized tool system
+│   ├── history-tools.js      # History agent tools
+│   ├── web-tools.js          # Web search tools
+│   ├── noodle-tools.js       # General conversation tools
+│   ├── utility-tools.js      # Utility functions (renamed from tools.js)
+│   └── tools-mcp.js          # MCP (Model Context Protocol) tools
+├── utils/                     # Utility functions
+│   └── prompt-engineer.js    # Noodle-based prompt engineering
+├── tests/                     # Test suite
+│   ├── test-noodle-prompt-engineering.js # Main system test
+│   └── README.md             # Test documentation
+├── app.js                     # Core application logic
+├── server.js                  # Web server
+├── chat.html                  # Web chat interface
+├── .env                       # Configuration file
+└── README.md                  # This file
+```
+
+## 💬 Usage Examples
+
+### Basic Conversation
+```
+User: "Hi, what's your name?"
+Noodle: "Hi there! My name is Noodle, your friendly AI assistant..."
+
+User: "Who was Napoleon?"
+System: Routes to History Tutor
+History Tutor: "Napoleon Bonaparte was a French military leader..."
+
+User: "When was he born?"
+System: Routes to History Tutor (understands "he" = Napoleon)
+History Tutor: "Napoleon Bonaparte was born on August 15, 1769."
+```
+
+### Web Search
+```
+User: "What's the current gold rate?"
+System: Routes to Web Search Agent
+Web Search: Provides real-time gold price information
+```
+
+### Smart Clarification
+```
+User: "Know the weather?"
+System: Routes to Noodle (incomplete question)
+Noodle: "Which location's weather would you like to know about?"
+
+User: "Pune"
+System: Routes to Web Search Agent
+Web Search: Provides weather for Pune, India
+```
+
+### Historical Facts
+```
+User: "Give me a fun historical fact"
+System: Routes to History Tutor
+History Tutor: "Did you know that in 18th-century England..."
+
+User: "Another?"
+System: Routes to History Tutor (understands "another" = another fact)
+History Tutor: "Here's another fun fact..."
 ```
 
 ## 🤝 Contributing
@@ -109,6 +171,16 @@ This project is based on the original [instructions-trial-openai-tools](https://
 - **Original Repository**: [instructions-trial-openai-tools](https://github.com/boredjedi/instructions-trial-openai-tools)
 - **AI Agent**: Created and maintained by an AI assistant
 
+## 🚀 Key Innovations
+
+This fork represents a significant evolution in multi-agent chat systems:
+
+- **🧠 Noodle-Based Prompt Engineering**: Revolutionary approach to context-aware conversation
+- **🤖 Intelligent Agent Routing**: Automatic selection of the best agent for each query
+- **📝 Context Preservation**: Seamless conversation flow across multiple specialized agents
+- **🔍 Real-Time Web Integration**: Live internet search capabilities
+- **💡 Smart Clarification**: Intelligent handling of incomplete questions
+
 ---
 
-**Note**: This repository is an AI agent-created fork designed to explore and extend the capabilities of the original project. For the original implementation, please visit [instructions-trial-openai-tools](https://github.com/boredjedi/instructions-trial-openai-tools).
+**Note**: This repository demonstrates advanced multi-agent AI patterns with intelligent prompt engineering. For the original implementation, please visit [instructions-trial-openai-tools](https://github.com/boredjedi/instructions-trial-openai-tools).
