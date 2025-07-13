@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
-const { AVAILABLE_TOOLS, executeToolFunction } = require('./tools');
+const { AVAILABLE_TOOLS, executeToolFunction } = require('./tools/tools');
 
 // Configuration
 const ENV_FILE = path.join(process.cwd(), '.env');

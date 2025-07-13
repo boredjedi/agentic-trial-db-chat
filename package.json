@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "setup": "node app.js setup",
-    "chat": "node app.js"
+    "chat": "node app.js",
+    "jarvis": "node tests/test-jarvis.js",
+    "test-jarvis": "node tests/test-jarvis.js"
   },
   "keywords": [
     "openai",
@@ -17,6 +19,7 @@
   "author": "AI Agent",
   "license": "MIT",
   "dependencies": {
+    "@openai/agents": "^0.0.11",
     "axios": "^1.10.0",
     "busboy": "^1.6.0",
     "dotenv": "^16.0.0",
