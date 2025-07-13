@@ -1,66 +1,39 @@
-const { Agent } = require('@openai/agents');
-const OpenAI = require('openai');
+const { Agent, run, AgentInputItem } = require('@openai/agents');
+const { webSearchTool } = require('../tools/web-tools');
 
 // Web search agent specialized for internet searches
-const webSearchAgent = new Agent({
+const webSearchAgent = Agent.create({
   name: 'Web Search Agent',
-  instructions: `You are a specialized web search agent. Your job is to:
+  instructions: `You are a web search agent who responds to engineered prompts from Noodle.
   
-  1. Perform web searches using the OpenAI search model
-  2. Provide accurate, up-to-date information from the internet
-  3. Format your responses clearly and concisely
-  4. Include relevant sources when possible
-  5. Focus on current and factual information
-  
-  Always use the web_search_tool to perform searches. Never make up information.`,
-  model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4o-search-preview',
-  tools: [{
-    type: "web_search"
-  }]
+  IMPORTANT RULES:
+  1. ALWAYS use the web_search_tool to respond
+  2. The engineered prompt you receive contains all necessary context and specific instructions
+  3. Do not make decisions about what to search - follow the engineered prompt exactly
+  4. The prompt includes message history context for pronoun resolution and follow-ups
+  5. Simply pass the engineered prompt to the tool and return the result`,
+  model: process.env.OPENAI_MODEL || 'gpt-4o',
+  tools: [webSearchTool]
 });
 
 // Function to run web search agent
-async function runWebSearchAgent(query, options = {}) {
+async function runWebSearchAgent(engineeredPrompt) {
   try {
-    console.log(`🔍 Web Search Agent searching for: "${query}"`);
+    // Create thread with the engineered prompt
+    const thread = [{ role: 'user', content: engineeredPrompt }];
     
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    // Use the agent SDK to get the response
+    const result = await run(webSearchAgent, thread);
     
-    // Use the search model directly for web searches
-    const searchModel = process.env.OPENAI_SEARCH_MODEL || 'gpt-4o-search-preview';
-    
-    const completion = await client.chat.completions.create({
-      model: searchModel,
-      web_search_options: {
-        // Only use supported options
-      },
-      messages: [{
-        role: "user",
-        content: `Search for: ${query}`
-      }],
-      max_tokens: options.max_tokens || 2000
-    });
-    
-    const searchResult = completion.choices[0].message.content;
-    
-    return {
-      query: query,
-      model: searchModel,
-      result: searchResult,
-      timestamp: new Date().toISOString(),
-      usage: completion.usage
-    };
-    
+    // Extract the response
+    if (result.finalOutput) {
+      return result.finalOutput;
+    } else {
+      return 'I can help you search for information. Please try again or rephrase your query.';
+    }
   } catch (error) {
     console.error('Web search agent error:', error.message);
-    return {
-      query: query,
-      result: `I apologize, but I'm unable to perform web searches at the moment due to an error: ${error.message}. Please try again later or rephrase your query.`,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    };
+    return 'Sorry, I encountered an error with the web search. Please try again later.';
   }
 }
 

@@ -6,8 +6,12 @@ const { getCompletion, getCompletionWithHistory, setup } = require('./app.js');
 const OpenAI = require('openai');
 const axios = require('axios');
 const Busboy = require('busboy');
-const { chatWithMainAgent } = require('./agents/main-agent');
-const { askNoodle } = require('./agents/noodle-agent');
+const { noodleAgent } = require('./agents/noodle-agent');
+const { run, AgentInputItem } = require('@openai/agents');
+const { 
+    engineerPromptForAgent,
+    determineTargetAgent 
+} = require('./utils/prompt-engineer');
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -453,23 +457,117 @@ async function handleRequest(req, res) {
         req.on('end', async () => {
             try {
                 const { prompt, agent = 'main', messageHistory = [] } = JSON.parse(body);
-                console.log(`🔍 Chat request - Agent: ${agent}, Prompt: ${prompt.substring(0, 50)}...`);
+                let selectedAgent = agent;
+                let engineeredPrompt = prompt;
+                
+                // Use Noodle to determine target agent and engineer prompt
+                if (agent === 'noodle' || agent === 'main') {
+                    selectedAgent = await determineTargetAgent(prompt, messageHistory);
+                    engineeredPrompt = await engineerPromptForAgent(prompt, messageHistory, selectedAgent);
+                }
+                
+                // Print chat history
+                console.log('📝 Chat History:');
+                messageHistory.forEach((msg, i) => {
+                  console.log(`  ${i+1}. ${msg.role}: ${msg.content}`);
+                });
+                
+                console.log('');
+                console.log(`🎯 Identified Agent: ${selectedAgent}`);
+                console.log(`🧠 Engineered Prompt: ${engineeredPrompt}`);
+                console.log('');
                 
                 let result;
                 
-                // Park main agent - only use Noodle for now
-                console.log('📚 Using Noodle agent...');
-                const response = await askNoodle(prompt, messageHistory);
-                result = {
-                    response: response,
-                    agent: 'noodle'
-                };
+                // Route to appropriate agent with engineered prompt
+                if (selectedAgent === 'history') {
+                    const { askHistoryTutor } = require('./agents/history-tutor-agent');
+                    const response = await askHistoryTutor(engineeredPrompt);
+                    result = {
+                        response: response,
+                        agent: 'history'
+                    };
+                    
+                } else if (selectedAgent === 'web') {
+                    const { runWebSearchAgent } = require('./agents/web-search-agent');
+                    const response = await runWebSearchAgent(engineeredPrompt);
+                    result = {
+                        response: response,
+                        agent: 'web'
+                    };
+                    
+                } else {
+                    // Default to Noodle for general conversation
+                    // Convert messageHistory to AgentInputItem format
+                    const thread = messageHistory.map(msg => ({
+                        role: msg.role,
+                        content: msg.content
+                    }));
+                    
+                    // Add current user message to thread
+                    thread.push({ role: 'user', content: engineeredPrompt });
+                    
+                    const response = await run(noodleAgent, thread);
+                    result = {
+                        response: response.finalOutput || response,
+                        agent: 'noodle'
+                    };
+                }
                 
-                console.log(`✅ Response from ${agent}:`, result.response ? 'Has response' : 'No response');
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(result));
             } catch (error) {
                 console.error('❌ Chat error:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+        return;
+    }
+
+    if (pathname === '/api/test-routing' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+            try {
+                const { prompt, agent = 'main', messageHistory = [] } = JSON.parse(body);
+                const lowerPrompt = prompt.toLowerCase();
+                let selectedAgent = agent;
+                
+                console.log(`🧪 TEST ROUTING - Original agent: ${agent}, Prompt: "${prompt}"`);
+                
+                if (agent === 'noodle' || agent === 'main') {
+                    if (lowerPrompt.includes('napoleon') || lowerPrompt.includes('history') || 
+                        lowerPrompt.includes('historical') || lowerPrompt.includes('fact') ||
+                        lowerPrompt.includes('born') || lowerPrompt.includes('died') ||
+                        lowerPrompt.includes('emperor') || lowerPrompt.includes('king') ||
+                        lowerPrompt.includes('queen') || lowerPrompt.includes('war') ||
+                        lowerPrompt.includes('battle') || lowerPrompt.includes('ancient') ||
+                        lowerPrompt.includes('he ') || lowerPrompt.includes('she ') ||
+                        lowerPrompt.includes('they ') || lowerPrompt.includes('another?')) {
+                        selectedAgent = 'history';
+                    } else if (lowerPrompt.includes('gold') || lowerPrompt.includes('rate') ||
+                               lowerPrompt.includes('price') || lowerPrompt.includes('today') ||
+                               lowerPrompt.includes('weather') || lowerPrompt.includes('news') ||
+                               lowerPrompt.includes('current') || lowerPrompt.includes('stock') ||
+                               lowerPrompt.includes('market') || lowerPrompt.includes('yesterday')) {
+                        selectedAgent = 'web';
+                    } else {
+                        // Default to noodle for general conversation
+                        selectedAgent = 'noodle';
+                    }
+                }
+                
+                console.log(`🧪 TEST ROUTING - Selected agent: ${selectedAgent}`);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                    originalAgent: agent, 
+                    selectedAgent: selectedAgent, 
+                    prompt: prompt,
+                    lowerPrompt: lowerPrompt
+                }));
+            } catch (error) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: error.message }));
             }
