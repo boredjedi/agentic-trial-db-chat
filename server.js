@@ -452,14 +452,14 @@ async function handleRequest(req, res) {
         });
         req.on('end', async () => {
             try {
-                const { prompt, agent = 'main' } = JSON.parse(body);
+                const { prompt, agent = 'main', messageHistory = [] } = JSON.parse(body);
                 console.log(`🔍 Chat request - Agent: ${agent}, Prompt: ${prompt.substring(0, 50)}...`);
                 
                 let result;
                 
                 // Park main agent - only use Noodle for now
                 console.log('📚 Using Noodle agent...');
-                const response = await askNoodle(prompt);
+                const response = await askNoodle(prompt, messageHistory);
                 result = {
                     response: response,
                     agent: 'noodle'
