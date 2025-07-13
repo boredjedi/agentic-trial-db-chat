@@ -489,13 +489,16 @@
     <div class="container">
         <div class="header">
             <div class="header-left">
-                <h1>🤖 OpenAI Chat Interface</h1>
+                <h1>📚 Noodle History Tutor</h1>
                 <p class="session-note">💡 New thread per session for tool support</p>
             </div>
             <div class="header-center">
                 <div id="apiStatus" class="status">Checking API status...</div>
             </div>
             <div class="header-right">
+                <div style="color: white; font-size: 0.8rem; margin-right: 10px; padding: 4px 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
+                    📚 Noodle Agent
+                </div>
                 <label style="color: white; font-size: 0.8rem;">
                     <input type="checkbox" id="debugMode" style="margin-right: 5px;">
                     Debug Mode
@@ -507,7 +510,7 @@
             <div class="main-chat">
                 <div class="messages" id="messages">
                     <div class="message ai-message">
-                        <strong>🤖 Assistant:</strong> Hello! I'm ready to help. Send me a message and I'll respond with both the answer and structured JSON output for debugging.
+                        <strong>📚 Noodle:</strong> Hello! I'm Noodle, your history tutor. Ask me anything about history and I'll help you learn! I can explain historical events, figures, and concepts in an engaging way.
                     </div>
                 </div>
                 
@@ -577,6 +580,7 @@
         const debugModeCheckbox = document.getElementById('debugMode');
         const fileUpload = document.getElementById('fileUpload');
         const fileStatus = document.getElementById('fileStatus');
+        // Agent selector removed - using Noodle only
 
         // Conversation history
         let conversationHistory = [];
@@ -762,18 +766,23 @@
             sendButton.disabled = true;
             
             try {
+                const requestBody = { 
+                    prompt: message,
+                    agent: 'noodle',
+                    messageHistory: conversationHistory,
+                    debugMode: debugModeCheckbox.checked,
+                    fileIds: uploadedFiles.filter(f => !f.processing).map(f => f.id),
+                    threadId: window.currentThreadId // Send current thread ID if exists
+                };
+                
+                console.log('📤 Sending request:', requestBody);
+                
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ 
-                        prompt: message,
-                        messageHistory: conversationHistory,
-                        debugMode: debugModeCheckbox.checked,
-                        fileIds: uploadedFiles.filter(f => !f.processing).map(f => f.id),
-                        threadId: window.currentThreadId // Send current thread ID if exists
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 const data = await response.json();

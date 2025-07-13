@@ -6,6 +6,8 @@ const { getCompletion, getCompletionWithHistory, setup } = require('./app.js');
 const OpenAI = require('openai');
 const axios = require('axios');
 const Busboy = require('busboy');
+const { chatWithMainAgent } = require('./agents/main-agent');
+const { askNoodle } = require('./agents/noodle-agent');
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -450,14 +452,24 @@ async function handleRequest(req, res) {
         });
         req.on('end', async () => {
             try {
-                const { prompt, messageHistory = [], debugMode = false, fileIds = [], threadId = null } = JSON.parse(body);
+                const { prompt, agent = 'main' } = JSON.parse(body);
+                console.log(`🔍 Chat request - Agent: ${agent}, Prompt: ${prompt.substring(0, 50)}...`);
                 
-                // Use OpenAI Assistants v2 API for tool support (file search, etc.)
-                const result = await handleChatWithAssistants(prompt, messageHistory, debugMode, fileIds, threadId);
+                let result;
                 
+                // Park main agent - only use Noodle for now
+                console.log('📚 Using Noodle agent...');
+                const response = await askNoodle(prompt);
+                result = {
+                    response: response,
+                    agent: 'noodle'
+                };
+                
+                console.log(`✅ Response from ${agent}:`, result.response ? 'Has response' : 'No response');
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(result));
             } catch (error) {
+                console.error('❌ Chat error:', error);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: error.message }));
             }
